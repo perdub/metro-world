@@ -3,6 +3,8 @@ import eu.metroworld.infrastructure.InfrastructureBlocks;
 import eu.metroworld.infrastructure.world.NetworkPlan;
 import net.minecraft.block.*;
 import net.minecraft.block.enums.SlabType;
+import net.minecraft.block.enums.BlockHalf;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.math.*;
 import net.minecraft.world.*;
@@ -18,6 +20,7 @@ public abstract class EntranceGeneratorMixin {
  @Inject(method="generateFeatures",at=@At("TAIL"))
  private void metroWorld$entrance(StructureWorldAccess world,Chunk chunk,StructureAccessor structures,CallbackInfo ci){
   if(!((Object)this instanceof NoiseChunkGenerator)||!world.toServerWorld().getRegistryKey().equals(World.OVERWORLD))return;
+  metroWorld$treeHatch(world,chunk);
   var registry=world.getRegistryManager().get(RegistryKeys.STRUCTURE);
   java.util.Set<net.minecraft.structure.StructureStart> starts=new java.util.HashSet<>();
   for(int ox=-1;ox<=1;ox++)for(int oz=-1;oz<=1;oz++)starts.addAll(structures.getStructureStarts(new ChunkPos(chunk.getPos().x+ox,chunk.getPos().z+oz),s->{var id=registry.getId(s);if(id==null)return false;String name=id.getPath();return name.startsWith("village_")||name.equals("pillager_outpost")||name.equals("desert_pyramid")||name.equals("jungle_pyramid")||name.equals("igloo")||name.equals("mansion");}));
@@ -51,4 +54,36 @@ public abstract class EntranceGeneratorMixin {
    org.slf4j.LoggerFactory.getLogger("metro-world").info("Вход метро рядом с {}: {}, {}, {}",registry.getId(start.getStructure()),x,y,z);
   }
  }
+ private void metroWorld$treeHatch(StructureWorldAccess world,Chunk chunk){
+  // Rare service entrances, contained entirely in the owning chunk.
+  if(Math.floorMod(NetworkPlan.hash(world.getSeed(),chunk.getPos().x,chunk.getPos().z,731),96)!=0)return;
+  int sx=chunk.getPos().getStartX(),sz=chunk.getPos().getStartZ();
+  for(int tx=sx+3;tx<=sx+10;tx++)for(int tz=sz+3;tz<=sz+12;tz++){
+   int treeY=world.getTopY(Heightmap.Type.WORLD_SURFACE,tx,tz)-1;
+   if(!world.getBlockState(new BlockPos(tx,treeY,tz)).isIn(BlockTags.LEAVES))continue;
+   int ground=treeY;
+   while(ground>world.getSeaLevel()&&world.getBlockState(new BlockPos(tx,ground,tz)).isIn(BlockTags.LEAVES))ground--;
+   if(!world.getBlockState(new BlockPos(tx,ground,tz)).isIn(BlockTags.LOGS))continue;
+   while(ground>world.getSeaLevel()&&world.getBlockState(new BlockPos(tx,ground,tz)).isIn(BlockTags.LOGS))ground--;
+   int x=tx+2,z=tz,y=ground+1;
+   boolean clear=true;
+   for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++){
+    for(int dy=-3;dy<=-1;dy++){
+     BlockPos p=new BlockPos(x+dx,y+dy,z+dz);BlockState state=world.getBlockState(p);
+     if(!state.isSolidBlock(world,p)||!world.getFluidState(p).isEmpty()||state.isIn(BlockTags.LOGS))clear=false;
+    }
+    for(int dy=0;dy<=2;dy++)if(!world.getBlockState(new BlockPos(x+dx,y+dy,z+dz)).isReplaceable())clear=false;
+   }
+   if(!clear)continue;
+   for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)for(int dy=-3;dy<=-1;dy++)
+    world.setBlockState(new BlockPos(x+dx,y+dy,z+dz),Blocks.STONE_BRICKS.getDefaultState(),2);
+   world.setBlockState(new BlockPos(x,y-2,z),InfrastructureBlocks.SERVICE_LIFT.getDefaultState(),2);
+   world.setBlockState(new BlockPos(x,y-1,z),Blocks.LADDER.getDefaultState().with(LadderBlock.FACING,Direction.NORTH),2);
+   world.setBlockState(new BlockPos(x,y,z),Blocks.OAK_TRAPDOOR.getDefaultState().with(TrapdoorBlock.HALF,BlockHalf.TOP),2);
+   world.setBlockState(new BlockPos(x+1,y-1,z),Blocks.SEA_LANTERN.getDefaultState(),2);
+   org.slf4j.LoggerFactory.getLogger("metro-world").info("Технический люк под деревом: {}, {}, {}",x,y,z);
+   return;
+  }
+ }
+
 }

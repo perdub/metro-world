@@ -1,5 +1,5 @@
 {
-  "type": "btr_infrastructure:underground",
+  "type": "metro-world:metro-world",
   "generator": {
     "type": "minecraft:flat",
     "settings": {
@@ -8,11 +8,26 @@
       "features": false,
       "structure_overrides": [],
       "layers": [
-        { "height": 4, "block": "minecraft:bedrock" },
-        { "height": 4, "block": "minecraft:obsidian" },
-        { "height": 496, "block": "minecraft:stone" },
-        { "height": 4, "block": "minecraft:obsidian" },
-        { "height": 4, "block": "minecraft:bedrock" }
+        {
+          "height": 4,
+          "block": "minecraft:bedrock"
+        },
+        {
+          "height": 4,
+          "block": "minecraft:obsidian"
+        },
+        {
+          "height": 496,
+          "block": "minecraft:stone"
+        },
+        {
+          "height": 4,
+          "block": "minecraft:obsidian"
+        },
+        {
+          "height": 4,
+          "block": "minecraft:bedrock"
+        }
       ]
     }
   }

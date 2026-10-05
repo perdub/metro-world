@@ -36,28 +36,15 @@ public final class NetworkBuilder {
   for(var path:plan.paths())path(c,path);
   for(var tower:plan.stairs())stairs(c,tower);
   for(var station:plan.stations())station(c,station,seed);
-  // Keep the showcase interchange independent of the general network's neighbour scan.
-  // Its extent is clipped by Canvas.put, so only chunks near each component do work.
-  // The public showcase hub is anchored for the supplied preset seed (619015). Keeping
-  // this fixed also avoids relying on per-region worldgen random seeds for a cross-chunk link.
-  var west=new NetworkPlan.Node(548,-25,-145);var east=new NetworkPlan.Node(868,-25,-145);
-  if(overlaps(c, east.x()-40,east.x()+40,east.z()-17,east.z()+17))
-   station(c,new NetworkPlan.Station(east,NetworkPlan.hash(seed,1,0,911),NetworkPlan.Condition.INTACT,true),seed);
-  var walk=new TransitGeometry.Route(java.util.List.of(
-   new TransitGeometry.Point(west.x()+34,west.y()+2,west.z()+12),
-   new TransitGeometry.Point(east.x()-34,east.y()+2,east.z()+12)));
-  if(overlaps(c,west.x()+34,east.x()-34,west.z()+9,west.z()+15))
-   path(c,new NetworkPlan.Path(walk,NetworkPlan.Condition.INTACT,NetworkPlan.hash(seed,1,0,911),true,true));
   c.flush(seed);
  }
- private static boolean overlaps(Canvas c,int x1,int x2,int z1,int z2){
-  return x2>=c.sx&&x1<=c.sx+15&&z2>=c.sz&&z1<=c.sz+15;
- }
- private static void station(Canvas c,NetworkPlan.Station s,long seed){var n=s.node();
+ private static void station(Canvas c,NetworkPlan.Station s,long seed){var n=s.node();var kind=NetworkPlan.stationKind(n,s.salt());
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=20;h++){
    int dx=x-n.x(),dz=z-n.z();double edge=Math.min(Math.min(40-Math.abs(dx),17-Math.abs(dz)),Math.min(h,14-h));
    if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
    BlockState state=StationDesign.sample(dx,h,dz,s.salt());
+   if(kind==NetworkPlan.StationKind.FREIGHT)state=SpecialStations.freight(dx,h,dz,state);
+   if(kind==NetworkPlan.StationKind.BIOCENTER&&Math.abs(dx)<=3&&dz<=-14&&h>=3&&h<=7)state=AIR;
    // Dedicated doors, not accidental carving through a wall. Stair mezzanine starts farther east.
    if(dx>=-10&&dx<=-6&&dz>=14&&h>=3&&h<=6)state=AIR;
    if(dx>=34&&Math.abs(dz-12)<=2&&h>=3&&h<=5)state=AIR;
@@ -70,35 +57,65 @@ public final class NetworkBuilder {
    c.put(n.x()-33,n.y()+5,n.z()+13,Blocks.COBBLESTONE_SLAB.getDefaultState(),36);
   }
   String[] names={"Лазурная","Оранжерея","Северная","Белая линия","Пересадочная","Светлая","Кварцевая","Тихая"};
-  String name=s.interchange()?(n.x()==548?"Западная пересадка":"Восточная пересадка"):n.x()==0&&n.z()==0?"Центральная":names[(int)Math.floorMod(s.salt(),names.length)];
+  String name=kind==NetworkPlan.StationKind.FREIGHT?"Грузовой терминал":kind==NetworkPlan.StationKind.BIOCENTER?"Биоцентр / купол":s.interchange()?"Пересадочная":n.x()==0&&n.z()==0?"Центральная":names[(int)Math.floorMod(s.salt(),names.length)];
   BlockPos signPos=new BlockPos(n.x(),n.y()+6,n.z()+16);c.signs.put(signPos,name);
   c.put(signPos.getX(),signPos.getY(),signPos.getZ(),Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.NORTH),40);
   // Safe landing in an uncluttered platform aisle. Return terminal is separate from circulation.
   c.put(n.x()+2,n.y()+2,n.z()+8,Blocks.SMOOTH_QUARTZ.getDefaultState(),50);
   c.box(n.x()+2,n.x()+2,n.y()+3,n.y()+4,n.z()+8,n.z()+8,AIR,50);
   c.put(n.x()-10,n.y()+3,n.z()+8,InfrastructureBlocks.LIFT.getDefaultState(),50);
+  if(kind==NetworkPlan.StationKind.BIOCENTER)biocenter(c,n);
   // Small searchable supply caches sit against the outside ends of each platform.
   c.put(n.x()+24,n.y()+3,n.z()+14,Blocks.CHEST.getDefaultState(),40);
   c.put(n.x()-24,n.y()+3,n.z()-14,Blocks.CHEST.getDefaultState(),40);
  }
- private static void path(Canvas c,NetworkPlan.Path p){double width=p.service()?3:5;int fullHeight=p.service()?5:7;
+ private static void biocenter(Canvas c,NetworkPlan.Node n){
+  // A separate garden dome south of the station's maintenance wing.
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++){
+   int dx=x-n.x(),dz=z-(n.z()-62);
+   if(Math.abs(dx)<=34&&Math.abs(dz)<=34)for(int h=-6;h<=34;h++){
+    BlockState state=SpecialStations.garden(dx,h,dz);if(state!=null)c.put(x,n.y()+2+h,z,state,35);
+   }
+   // Level pedestrian corridor meets the station platform and dome walkway.
+   if(Math.abs(dx)<=9&&z>=n.z()-40&&z<=n.z()-14)for(int h=-6;h<=14;h++){
+    double edge=Math.min(3-Math.abs(dx),Math.min(h-2,8-h));
+    if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
+    BlockState state=h==2?Blocks.SMOOTH_QUARTZ.getDefaultState():h==8?Blocks.SEA_LANTERN.getDefaultState():Math.abs(dx)==3?Blocks.WHITE_CONCRETE.getDefaultState():AIR;
+    c.put(x,n.y()+h,z,state,42);
+   }
+  }
+ }
+ private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();
   BlockState[] accents={Blocks.CYAN_CONCRETE.getDefaultState(),Blocks.LIME_CONCRETE.getDefaultState(),Blocks.ORANGE_CONCRETE.getDefaultState(),Blocks.LIGHT_BLUE_CONCRETE.getDefaultState(),Blocks.PURPLE_CONCRETE.getDefaultState()};
   BlockState[] glasses={Blocks.CYAN_STAINED_GLASS.getDefaultState(),Blocks.LIME_STAINED_GLASS.getDefaultState(),Blocks.ORANGE_STAINED_GLASS.getDefaultState(),Blocks.LIGHT_BLUE_STAINED_GLASS.getDefaultState(),Blocks.PURPLE_STAINED_GLASS.getDefaultState()};
   int line=Math.floorMod((int)(p.salt()>>>5),accents.length);BlockState accent=accents[line],glass=glasses[line];
-  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:p.route().samplesNear(x,z,width+6)){
-   int base=(int)Math.floor(sample.floorY());double d=sample.distance();int roof=fullHeight-(d>=width-1?2:d>=width-2?1:0);
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:p.route().samplesNear(x,z,12)){
+   var profile=TunnelProfile.section(p.salt(),p.service(),p.transfer(),sample.along(),length);
+   double width=profile.halfWidth();int fullHeight=profile.height();
+   int base=(int)Math.floor(sample.floorY());double d=profile.distance(sample);int roof=profile.roof(d);
+   boolean damaged=p.condition()!=NetworkPlan.Condition.INTACT;
+   int bay=Math.floorMod((int)sample.along(),12);
+   BlockState wall=switch(profile.style()){
+    case BRICK->(damaged&&bay==0?Blocks.CRACKED_STONE_BRICKS:Blocks.BRICKS).getDefaultState();
+    case INDUSTRIAL->(bay<=1?Blocks.POLISHED_DEEPSLATE:Blocks.GRAY_CONCRETE).getDefaultState();
+    case ROCK->(Math.floorMod(x*13+z*7+base,5)==0?Blocks.ANDESITE:Blocks.STONE).getDefaultState();
+    case CLEAN->Blocks.SMOOTH_QUARTZ.getDefaultState();
+    case SERVICE,COMPACT->(bay<=1?Blocks.POLISHED_ANDESITE:Blocks.STONE_BRICKS).getDefaultState();
+    default->Blocks.WHITE_CONCRETE.getDefaultState();
+   };
    for(int h=-6;h<=fullHeight+6;h++){
     double edge=Math.min(width-d,Math.min(h,roof-h));int y=base+h;
     if(edge<0){shell(c,x,y,z,edge);continue;}
     BlockState state=AIR;int priority=20;
     if(h==0){state=(d<1.3&&!p.service()?Blocks.POLISHED_DEEPSLATE:Blocks.SMOOTH_STONE).getDefaultState();priority=30;}
     else if(d>width-0.85||h==roof){
-     state=Blocks.WHITE_CONCRETE.getDefaultState();priority=12;
-     if(h==3&&d>width-0.85)state=accent;
-     if(h==roof&&d<2.6&&Math.floorMod((int)sample.along(),8)<5)state=Blocks.SEA_LANTERN.getDefaultState();
-     if(d>width-0.85&&h==2)state=Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Math.abs(sample.headingX())>Math.abs(sample.headingZ())?(sample.headingX()>0?Direction.EAST:Direction.WEST):(sample.headingZ()>0?Direction.SOUTH:Direction.NORTH));
-     if(d>width-0.85&&h==4&&Math.floorMod((int)sample.along(),16)<=1)state=Blocks.WAXED_OXIDIZED_CUT_COPPER.getDefaultState();
-     if(d>width-0.85&&h>=4&&h<roof&&Math.floorMod((int)sample.along(),16)>2)state=glass;
+     state=wall;priority=12;
+     if(h==3&&h<roof&&d>width-0.85&&profile.style()!=TunnelProfile.Style.BRICK&&profile.style()!=TunnelProfile.Style.ROCK)state=accent;
+     if(h==roof&&d<(profile.compact()?0.8:1.6)&&profile.lamp(sample.along(),damaged))
+      state=(profile.style()==TunnelProfile.Style.SERVICE||profile.style()==TunnelProfile.Style.COMPACT?Blocks.MAGMA_BLOCK:profile.style()==TunnelProfile.Style.BRICK?Blocks.SHROOMLIGHT:Blocks.SEA_LANTERN).getDefaultState();
+     if(!profile.compact()&&d>width-0.85&&h==2&&profile.style()==TunnelProfile.Style.MODERN)state=Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Math.abs(sample.headingX())>Math.abs(sample.headingZ())?(sample.headingX()>0?Direction.EAST:Direction.WEST):(sample.headingZ()>0?Direction.SOUTH:Direction.NORTH));
+     if(!profile.compact()&&d>width-0.85&&h==4&&Math.floorMod((int)sample.along(),16)<=1)state=Blocks.WAXED_OXIDIZED_CUT_COPPER.getDefaultState();
+     if(profile.style()==TunnelProfile.Style.MODERN&&d>width-0.85&&h>=4&&h<roof&&Math.floorMod((int)sample.along(),16)>2)state=glass;
     }
     c.put(x,y,z,state,priority);
    }
@@ -106,7 +123,7 @@ public final class NetworkBuilder {
    double fraction=sample.floorY()-base;
    if(fraction>0.5&&d<width-1.2)c.put(x,base+1,z,Blocks.SMOOTH_STONE_SLAB.getDefaultState(),31);
    // Discrete vanilla rail marks the route center. Custom trains are a later layer on this spline.
-   if(!p.service()&&TransitGeometry.isTrackLane(sample,width)){
+   if(!p.service()&&TransitGeometry.isTrackLane(sample,5)){
     RailShape shape=railShape(p.route(),x,z,sample,base);
     boolean powered=Math.floorMod((int)sample.along()+(int)(p.salt()&0x7fffffff),52)<2;
     if(powered){

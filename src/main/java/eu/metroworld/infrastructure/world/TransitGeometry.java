@@ -24,6 +24,7 @@ public final class TransitGeometry {
             maxZ=points.stream().mapToDouble(Point::z).max().orElseThrow();
         }
         public List<Point> points(){return points;}
+        public double length(){double sum=0;for(int i=1;i<points.size();i++)sum+=Math.hypot(points.get(i).x-points.get(i-1).x,points.get(i).z-points.get(i-1).z);return sum;}
         /** Unit X/Z tangent at a distance measured along the route. */
         public Point headingAt(double distance){
             double travel=0;

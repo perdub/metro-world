@@ -2,12 +2,17 @@ package eu.metroworld.infrastructure.world;
 import java.util.*;
 /** Immutable spatial plan. Stations own explicit ports; routes never start inside platforms. */
 public final class NetworkPlan {
+ public enum StationKind { PASSENGER, FREIGHT, BIOCENTER }
+ public static StationKind stationKind(Node n,long salt){
+  if(n.x==0&&n.z==0)return StationKind.PASSENGER;
+  int roll=Math.floorMod((int)(salt>>>12),10);return roll<2?StationKind.FREIGHT:roll<4?StationKind.BIOCENTER:StationKind.PASSENGER;
+ }
  public enum Condition { INTACT, COLLAPSED, CHEMICAL, QUARANTINE }
  public static final int SPACING=512,SHELL=6;
  public record Node(int x,int z,int y){}
  public record Station(Node node,long salt,Condition condition,boolean interchange){
   public Station(Node node,long salt,Condition condition){this(node,salt,condition,false);}
-  public boolean intersects(int x,int z,int margin){return Math.abs(node.x-x-7.5)<=40+margin+7.5&&Math.abs(node.z-z-7.5)<=17+margin+7.5;}
+  public boolean intersects(int x,int z,int margin){return node.x+40+margin>=x&&node.x-40-margin<=x+15&&node.z+17+margin>=z&&node.z-(stationKind(node,salt)==StationKind.BIOCENTER?96:17)-margin<=z+15;}
  }
  public record Path(TransitGeometry.Route route,Condition condition,long salt,boolean service,boolean transfer){
   public Path(TransitGeometry.Route route,Condition condition,long salt,boolean service){this(route,condition,salt,service,false);}
@@ -29,14 +34,14 @@ public final class NetworkPlan {
   return v<70?Condition.INTACT:v<84?Condition.COLLAPSED:v<92?Condition.CHEMICAL:Condition.QUARANTINE;
  }
  private static TransitGeometry.Point point(Node n){return new TransitGeometry.Point(n.x,n.y,n.z);}
- private static void addPath(List<Path> out,TransitGeometry.Route route,Condition c,long h,boolean service,int sx,int sz){if(route.intersects(sx,sz,SHELL+(service?3:5)))out.add(new Path(route,c,h,service));}
+ private static void addPath(List<Path> out,TransitGeometry.Route route,Condition c,long h,boolean service,int sx,int sz){if(route.intersects(sx,sz,SHELL+(service?3:6)))out.add(new Path(route,c,h,service));}
  public static ChunkPlan forChunk(long seed,int sx,int sz){
   var stations=new ArrayList<Station>();var paths=new ArrayList<Path>();var rooms=new ArrayList<Room>();var stairs=new ArrayList<StairTower>();
   int gx=Math.floorDiv(sx,SPACING),gz=Math.floorDiv(sz,SPACING);
   // A north/south crossing sweeps outside its source cell; include two neighbour rings.
   for(int ix=gx-2;ix<=gx+2;ix++)for(int iz=gz-2;iz<=gz+2;iz++){
    Node a=node(seed,ix,iz);long h=hash(seed,ix,iz,29);Condition c=ix==0&&iz==0?Condition.INTACT:condition(seed,ix,iz,41);
-   Station station=new Station(a,h,c,ix==1&&iz==0);if(station.intersects(sx,sz,SHELL))stations.add(station);
+   Station station=new Station(a,h,c);if(station.intersects(sx,sz,SHELL))stations.add(station);
    // Side maintenance wing opens through a deliberate four-block station door.
    Room room=new Room(a.x-24,a.x+6,a.z+14,a.z+42,a.y+2,9,c,h);
    if(room.intersects(sx,sz,SHELL))rooms.add(room);
@@ -56,15 +61,6 @@ public final class NetworkPlan {
     if(maxX>=sx&&minX<=sx+15&&maxZ>=sz&&minZ<=sz+15)
      addPath(paths,TransitGeometry.between(point(a),point(b),d,40,eh),condition(seed,ix,iz,80+d),eh,false,sx,sz);
    }
-  }
-  // Put the showcase interchange in the next grid cell, away from chunks that a 0.3 player
-  // is likely to have already generated around the world spawn.
-  {
-   Node a=node(seed,1,0),b=new Node(a.x+320,a.z,a.y);long h=hash(seed,1,0,911);
-   Station second=new Station(b,h,Condition.INTACT,true);
-   if(second.intersects(sx,sz,SHELL))stations.add(second);
-   var walk=new TransitGeometry.Route(List.of(new TransitGeometry.Point(a.x+34,a.y+2,a.z+12),new TransitGeometry.Point(b.x-34,b.y+2,b.z+12)));
-   if(walk.intersects(sx,sz,SHELL+3))paths.add(new Path(walk,Condition.INTACT,h,true,true));
   }
   return new ChunkPlan(List.copyOf(stations),List.copyOf(paths),List.copyOf(rooms),List.copyOf(stairs));
  }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.3
+
+- Added modern, brick-vault, industrial, rough-rock and clean quartz tunnel architecture.
+- Added low-light service passages and 2×2 galleries with wide endpoint vestibules.
+- Applied reverse Nether coordinate scaling (8 metro blocks per Overworld block) to entry and remote exits.
+- Added a dedicated dimension type with coordinate_scale 0.125, preserving legacy dimension types.
+- Added profile, clearance, lighting-density and coordinate-conversion regression tests.
+
+## 0.5.2
+
+- Removed fixed showcase stations and their hardcoded transfer passage.
+- Kept procedural freight terminals and biocenters.
+- Added rare tree-canopy service hatches with recessed terminals and safe surface return positions.
+- Retained structure-side Overworld entrance pavilions and station return terminals.
+
+## 0.5.1
+
+- Added deterministic freight stations with loading gantries, pallets and supply crates.
+- Added biocenters with a glass garden dome, artificial blue sky and clouds, planted trees and pedestrian access.
+- Showcase freight terminal and biocenter retain the station transfer passage.
+
 ## 0.5.0 — Metro World
 
 - Renamed the project, Fabric mod ID, Java package, artifact, container image and admin command to Metro World.

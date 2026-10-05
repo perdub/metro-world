@@ -25,7 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - run: ./gradlew --no-daemon test build
+      - run: bash ./gradlew --no-daemon test build
       - name: Prepare fixed filename
         run: cp "$(find build/libs -maxdepth 1 -type f -name 'metro-world-*.jar' ! -name '*-sources.jar' -print -quit)" build/libs/metro-world.jar
       - name: Add mod to server image context
