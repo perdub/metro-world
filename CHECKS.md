@@ -9,3 +9,5 @@
 Container preparation: mocked checks passed for Fabric/1.21.1 filtering, four-mod manifest generation, SHA-512 mismatch rejection, workflow/Compose YAML and shell syntax. Actual mod downloads and Docker execution were not available in this workspace.
 
 Container smoke-test and status checker added. Shell/YAML syntax and the status checker were checked locally; actual Docker startup must run in CI because Docker is not installed here.
+
+CI grep fix: three orchestration regression tests passed (no ripgrep, large logs, wrong online mode, crash rejection and cleanup). These use a Docker fixture, not an actual Minecraft server.

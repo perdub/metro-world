@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+for command in docker grep sed tr python3 mkdir tee sleep; do
+  command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
+done
 image=${1:-metro-world:ci}
 name="metro-world-ci-${GITHUB_RUN_ID:-local}-$$"
 mkdir -p build/container-check
@@ -16,15 +19,15 @@ ready=false
 for ((attempt=0;attempt<120;attempt++)); do
   running=$(docker inspect -f '{{.State.Running}}' "$name")
   [[ "$running" == true ]] || { docker logs "$name"; exit 1; }
-  if docker logs "$name" 2>&1 | rg 'Done \(' >/dev/null; then ready=true; break; fi
+  if docker logs "$name" 2>&1 | grep -F 'Done (' >/dev/null; then ready=true; break; fi
   sleep 5
 done
 [[ "$ready" == true ]] || { echo 'Minecraft did not become ready within 10 minutes'; exit 1; }
 docker exec "$name" mc-health
 properties=$(docker exec "$name" cat /data/server.properties)
-printf '%s\n' "$properties" | rg -q '^online-mode=false\r?$'
-printf '%s\n' "$properties" | rg -q '^server-port=25565\r?$'
-docker exec "$name" cat /data/eula.txt | rg -q '^eula=true\r?$'
+printf '%s\n' "$properties" | tr -d '\r' | grep -Fx 'online-mode=false' >/dev/null
+printf '%s\n' "$properties" | tr -d '\r' | grep -Fx 'server-port=25565' >/dev/null
+docker exec "$name" cat /data/eula.txt | tr -d '\r' | grep -Fx 'eula=true' >/dev/null
 docker exec "$name" test -f /data/mods/metro-world.jar
 for mod in fabric-api lithium ferritecore krypton; do
   docker exec "$name" sh -c "ls /data/mods/${mod}*.jar" >/dev/null
@@ -32,7 +35,7 @@ done
 # Check the loaded custom dimension, then generate central station chunks.
 output=$(docker exec "$name" rcon-cli 'execute in metro-world:metro-world run time query gametime')
 printf '%s\n' "$output" | tee build/container-check/dimension.txt
-printf '%s\n' "$output" | rg -q 'The time is [0-9]+'
+printf '%s\n' "$output" | grep -E 'The time is [0-9]+' >/dev/null
 docker exec "$name" rcon-cli 'execute in metro-world:metro-world run forceload add -16 -16 16 16' > build/container-check/worldgen.txt
 sleep 10
 docker exec "$name" rcon-cli list > build/container-check/rcon.txt
@@ -40,7 +43,7 @@ docker exec "$name" rcon-cli list > build/container-check/rcon.txt
 port=$(docker port "$name" 25565/tcp | sed 's/.*://')
 python3 scripts/check-server-status.py "$port" > build/container-check/status.json
 docker logs "$name" > build/container-check/server.log 2>&1
-if rg -i 'failed to load|mixin apply failed|exception generating|crash report|encountered an unexpected exception' build/container-check/server.log; then
+if grep -Ei 'failed to load|mixin apply failed|exception generating|crash report|encountered an unexpected exception' build/container-check/server.log; then
   echo 'Server startup/world-generation error detected'; exit 1
 fi
 echo 'PASS: startup, installed mods, offline mode, EULA, dimension, world generation, RCON and published Minecraft port'

@@ -63,6 +63,8 @@ jobs:
           labels: ${{ steps.image-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Check container test orchestration
+        run: python3 -m unittest discover -s scripts/tests
       - name: Test Minecraft container
         run: bash scripts/container-smoke-test.sh metro-world:ci
       - name: Upload container diagnostics
