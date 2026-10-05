@@ -4,7 +4,8 @@ services:
     ports:
       - "${METRO_WORLD_PORT:-25565}:25565"
     environment:
-      EULA: "${EULA:-FALSE}"
+      EULA: "${EULA:-TRUE}"
+      ONLINE_MODE: "FALSE"
       LEVEL: "${METRO_WORLD_LEVEL:-btr-test}"
     volumes:
       - metro-world-world:/data

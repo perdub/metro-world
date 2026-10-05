@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       packages: write
@@ -30,6 +31,8 @@ jobs:
         run: cp "$(find build/libs -maxdepth 1 -type f -name 'metro-world-*.jar' ! -name '*-sources.jar' -print -quit)" build/libs/metro-world.jar
       - name: Add mod to server image context
         run: install -D -m 0644 build/libs/metro-world.jar server/mods/metro-world.jar
+      - name: Bundle Fabric API and server optimization mods
+        run: python3 scripts/prepare-server-mods.py
       - uses: actions/upload-artifact@v4
         with:
           name: metro-world
@@ -50,16 +53,42 @@ jobs:
           tags: |
             type=raw,value=dev-latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
-      - name: Build and publish server image
+      - name: Build testable server image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
-          tags: ${{ steps.image-meta.outputs.tags }}
+          load: true
+          tags: metro-world:ci
           labels: ${{ steps.image-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Test Minecraft container
+        run: bash scripts/container-smoke-test.sh metro-world:ci
+      - name: Upload container diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-diagnostics
+          path: build/container-check/
+          if-no-files-found: ignore
+      - name: Export tested container
+        run: docker save metro-world:ci | gzip > build/metro-world-container.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metro-world-container
+          path: build/metro-world-container.tar.gz
+          compression-level: 0
+      - name: Publish tested server image
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          IMAGE_TAGS: ${{ steps.image-meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            docker tag metro-world:ci "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
       - name: Rolling release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:

@@ -1,5 +1,12 @@
 # Changelog
 
+## Container configuration update
+
+- Enabled EULA acceptance and disabled online authentication in image/Compose defaults.
+- Bundle Fabric API, Lithium, FerriteCore and Krypton into the image during CI.
+- Resolve releases for Fabric 1.21.1, verify SHA-512 and include a version manifest.
+- Local server preparation uses the same dependency-download script as CI.
+
 ## 0.5.3
 
 - Added modern, brick-vault, industrial, rough-rock and clean quartz tunnel architecture.
