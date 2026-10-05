@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Fix false unsupported-rail failures for redstone blocks beneath powered rails using vanilla placement rules, including uphill support.
+- Report failing support block IDs and the number of powered rails validated.
+- Validate pedestrian floor support by its top face.
+- Generation unchanged: existing 0.6.0 worlds do not require regeneration for this patch.
+
 ## 0.6.0
 
 - Plan portal anchors first, subdivide regional connections with evenly spaced intermediate stops, and generate tracks from explicit station ports.
