@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0
+
+- Plan portal anchors first, subdivide regional connections with evenly spaced intermediate stops, and generate tracks from explicit station ports.
+- Keep the infinite regional graph connected; remove local coils and use forward-only graded routes.
+- Add small stops and larger terminal halls; rotate transverse halls and connect two-level interchange stations with public stairs.
+- Add a dedicated exit concourse to every hall and deterministic Overworld anchor kiosks on eligible terrain.
+- Remove approximate route clipping, validate chunk ownership, and expand runtime checks to both central lines, station tracks and exit passages.
+- Existing metro chunks require regeneration or a fresh test world; no automatic world deletion.
+
+## 0.5.4
+
+- Replaced distance-based rail stamping with face-connected, single-block track chains.
+- Derived corner and slope shapes from predecessor/successor cells; kept corners flat and powered rails off corners.
+- Aligned track-bed floors with discrete rail elevations and removed slab treads from rail corridors.
+- Moved crossline approach north of the first spiral to separate departure bays.
+- Deduplicated shared track cells and added vanilla-visible junction control terminals.
+- Added standalone geometry regression checks and an in-server validate-tracks command used by container CI.
+
 ## Container configuration update
 
 - Enabled EULA acceptance and disabled online authentication in image/Compose defaults.

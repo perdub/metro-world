@@ -19,6 +19,7 @@ public final class InfrastructureBlocks {
  public static final Block RIBBED_PANEL=register("ribbed_panel",Blocks.QUARTZ_PILLAR,Items.QUARTZ_PILLAR);
  public static final Block TACTILE_TILE=register("tactile_tile",Blocks.YELLOW_CONCRETE,Items.YELLOW_CONCRETE);
  public static final Block WAYFINDING_SIGN=register("wayfinding_sign",Blocks.BLUE_CONCRETE,Items.BLUE_CONCRETE);
+ public static final Block TRACK_SWITCH=Registry.register(Registries.BLOCK,Identifier.of("metro-world","track_switch"),new TrackSwitchBlock());
  public static final Block LIFT=registerLift();
  public static final Block SERVICE_LIFT=Registry.register(Registries.BLOCK,Identifier.of("metro-world","service_terminal"),new ServiceLiftBlock());
  private static Block registerLift(){

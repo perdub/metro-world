@@ -1,0 +1,62 @@
+package eu.metroworld.infrastructure;
+import eu.metroworld.infrastructure.world.*;
+import net.minecraft.block.*;
+import net.minecraft.block.enums.RailShape;
+import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.*;
+import java.util.*;
+/** Validate actual generated blocks on the central east/west and transverse connections, not just its plan. */
+public final class TrackValidation {
+ public static int run(ServerCommandSource source){
+  var world=source.getServer().getWorld(Transit.UNDERGROUND);
+  if(world==null){source.sendError(Text.literal("TRACKS_FAILED: metro dimension unavailable"));return 0;}
+  int checked=0,errors=0;String first="";var visited=new HashSet<BlockPos>();
+  for(boolean ns:new boolean[]{false,true})for(var lane:RailPlan.of(NetworkPlan.connection(world.getSeed(),0,0,ns)).lanes())for(var cell:lane){
+   var at=new BlockPos(cell.x(),cell.floor()+1,cell.z());if(!visited.add(at))continue;
+   world.getChunk(Math.floorDiv(at.getX(),16),Math.floorDiv(at.getZ(),16));
+   var state=world.getBlockState(at);String problem=null;
+   if(!(state.getBlock() instanceof AbstractRailBlock))problem="missing rail";
+   else if(!world.getBlockState(at.down()).isSolidBlock(world,at.down()))problem="unsupported rail";
+   else if(!world.getBlockState(at.up()).isAir())problem="blocked headroom";
+   else {
+    int neighbours=0;for(var d:new Direction[]{Direction.NORTH,Direction.SOUTH,Direction.EAST,Direction.WEST}){
+     var next=at.offset(d);if(world.getBlockState(next).getBlock() instanceof AbstractRailBlock||world.getBlockState(next.up()).getBlock() instanceof AbstractRailBlock||world.getBlockState(next.down()).getBlock() instanceof AbstractRailBlock)neighbours++;
+    }
+    // Junctions have selectable active legs; ordinary track cells must match their chain.
+    if(neighbours<=2){
+     RailShape shape=state.isOf(Blocks.POWERED_RAIL)?state.get(PoweredRailBlock.SHAPE):state.get(RailBlock.SHAPE);
+     if(!shape.asString().equals(cell.shape()))problem="wrong rail shape "+shape.asString()+" expected "+cell.shape();
+    }
+   }
+   checked++;if(problem!=null){errors++;if(first.isEmpty())first=at.toShortString()+": "+problem;}
+  }
+  // Check the two halls at each end, their rail throats and physical exit terminals.
+  for(boolean ns:new boolean[]{false,true})for(int end=0;end<=1;end++){
+   var node=StationGraph.railNode(world.getSeed(),ns?0:end,ns?end:0,ns);
+   var plan=NetworkPlan.forChunk(world.getSeed(),Math.floorDiv(node.x(),16)*16,Math.floorDiv(node.z(),16)*16);
+   var station=plan.stations().stream().filter(s->s.node().equals(node)&&s.northSouth()==ns).findFirst().orElseThrow();
+   int length=NetworkPlan.halfLength(station.kind()),width=NetworkPlan.halfWidth(station.kind());
+   for(int offset=-length;offset<=length;offset++)for(int lane:new int[]{-2,2}){
+    var at=new BlockPos(node.x()+(ns?-lane:offset),node.y()+1,node.z()+(ns?offset:lane));
+    world.getChunk(Math.floorDiv(at.getX(),16),Math.floorDiv(at.getZ(),16));
+    if(!(world.getBlockState(at).getBlock() instanceof AbstractRailBlock)||!world.getBlockState(at.up()).isAir()||!world.getBlockState(at.down()).isSolidBlock(world,at.down())){
+     errors++;if(first.isEmpty())first=at.toShortString()+": station throat blocked";
+    }
+    checked++;
+   }
+   var terminal=new BlockPos(node.x()+(ns?-(width+8):-10),node.y()+3,node.z()+(ns?-10:width+8));
+   world.getChunk(Math.floorDiv(terminal.getX(),16),Math.floorDiv(terminal.getZ(),16));
+   if(!world.getBlockState(terminal).isOf(InfrastructureBlocks.LIFT)){errors++;if(first.isEmpty())first=terminal.toShortString()+": missing exit";}
+   for(int side=width-3;side<width+8;side++){
+    var feet=new BlockPos(node.x()+(ns?-side:-10),node.y()+3,node.z()+(ns?-10:side));
+    world.getChunk(Math.floorDiv(feet.getX(),16),Math.floorDiv(feet.getZ(),16));
+    if(!world.getBlockState(feet).isAir()||!world.getBlockState(feet.up()).isAir()||!world.getBlockState(feet.down()).isSolidBlock(world,feet.down())){
+     errors++;if(first.isEmpty())first=feet.toShortString()+": blocked exit concourse";
+    }
+   }
+  }
+  if(errors>0){source.sendError(Text.literal("TRACKS_FAILED: "+errors+" / "+checked+"; "+first));return 0;}
+  int count=checked;source.sendFeedback(()->Text.literal("TRACKS_OK: "+count+" generated rails; support, headroom and shapes verified"),false);return count;
+ }
+}

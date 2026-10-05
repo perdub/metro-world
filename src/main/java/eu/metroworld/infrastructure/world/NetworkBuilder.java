@@ -15,6 +15,7 @@ public final class NetworkBuilder {
   final Chunk chunk;final int sx,sz,bottom,height;final BlockState[] states;final byte[] priorities;final java.util.Map<BlockPos,String> signs=new java.util.HashMap<>();
   Canvas(Chunk chunk){this.chunk=chunk;sx=chunk.getPos().getStartX();sz=chunk.getPos().getStartZ();bottom=chunk.getBottomY();height=chunk.getHeight();states=new BlockState[height*256];priorities=new byte[states.length];}
   void put(int x,int y,int z,BlockState state,int priority){if(x<sx||x>sx+15||z<sz||z>sz+15||y<bottom||y>=bottom+height)return;int i=(y-bottom)*256+(z-sz)*16+x-sx;if(priority>=priorities[i]){states[i]=state;priorities[i]=(byte)priority;}}
+  BlockState peek(int x,int y,int z){if(x<sx||x>sx+15||z<sz||z>sz+15||y<bottom||y>=bottom+height)return null;return states[(y-bottom)*256+(z-sz)*16+x-sx];}
   void box(int x1,int x2,int y1,int y2,int z1,int z2,BlockState state,int priority){for(int x=Math.max(sx,x1);x<=Math.min(sx+15,x2);x++)for(int z=Math.max(sz,z1);z<=Math.min(sz+15,z2);z++)for(int y=y1;y<=y2;y++)put(x,y,z,state,priority);}
   void flush(long seed){BlockPos.Mutable pos=new BlockPos.Mutable();for(int i=0;i<states.length;i++){BlockState state=states[i];if(state==null)continue;int x=sx+(i&15),z=sz+((i>>>4)&15),y=bottom+(i>>>8);chunk.setBlockState(pos.set(x,y,z),state,false);
    if(state.isOf(Blocks.CHEST)){ChestBlockEntity chest=new ChestBlockEntity(pos.toImmutable(),state);chest.setLootTable(RegistryKey.of(RegistryKeys.LOOT_TABLE,Identifier.of("btr_infrastructure","chests/supplies")));chest.setLootTableSeed(NetworkPlan.hash(seed,x,z,y));chunk.setBlockEntity(chest);}
@@ -36,38 +37,44 @@ public final class NetworkBuilder {
   for(var path:plan.paths())path(c,path);
   for(var tower:plan.stairs())stairs(c,tower);
   for(var station:plan.stations())station(c,station,seed);
+  rails(c,plan.paths());
   c.flush(seed);
  }
- private static void station(Canvas c,NetworkPlan.Station s,long seed){var n=s.node();var kind=NetworkPlan.stationKind(n,s.salt());
-  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=20;h++){
-   int dx=x-n.x(),dz=z-n.z();double edge=Math.min(Math.min(40-Math.abs(dx),17-Math.abs(dz)),Math.min(h,14-h));
+ private static BlockPos local(NetworkPlan.Station s,int x,int h,int z){var n=s.node();return s.northSouth()?new BlockPos(n.x()-z,n.y()+h,n.z()+x):new BlockPos(n.x()+x,n.y()+h,n.z()+z);}
+ private static void localPut(Canvas c,NetworkPlan.Station s,int x,int h,int z,BlockState state,int priority){BlockPos p=local(s,x,h,z);c.put(p.getX(),p.getY(),p.getZ(),s.northSouth()?state.rotate(net.minecraft.util.BlockRotation.CLOCKWISE_90):state,priority);}
+ private static void station(Canvas c,NetworkPlan.Station s,long seed){var n=s.node();var kind=s.kind();int length=NetworkPlan.halfLength(kind),width=NetworkPlan.halfWidth(kind),height=NetworkPlan.stationHeight(kind);
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=height+6;h++){
+   int dx=s.northSouth()?z-n.z():x-n.x(),dz=s.northSouth()?n.x()-x:z-n.z();double edge=Math.min(Math.min(length-Math.abs(dx),width-Math.abs(dz)),Math.min(h,height-h));
    if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
-   BlockState state=StationDesign.sample(dx,h,dz,s.salt());
+   BlockState state=StationDesign.sample(dx,h,dz,length,width,height,s.salt());
    if(kind==NetworkPlan.StationKind.FREIGHT)state=SpecialStations.freight(dx,h,dz,state);
    if(kind==NetworkPlan.StationKind.BIOCENTER&&Math.abs(dx)<=3&&dz<=-14&&h>=3&&h<=7)state=AIR;
-   // Dedicated doors, not accidental carving through a wall. Stair mezzanine starts farther east.
-   if(dx>=-10&&dx<=-6&&dz>=14&&h>=3&&h<=6)state=AIR;
-   if(dx>=34&&Math.abs(dz-12)<=2&&h>=3&&h<=5)state=AIR;
-   if(s.interchange()&&dx<=-34&&Math.abs(dz-12)<=2&&h>=3&&h<=7)state=AIR;
-   if(state!=null)c.put(x,n.y()+h,z,state,state.isAir()?34:35);
+   if(dx>=-12&&dx<=-6&&dz>=width-3&&h>=3&&h<=6)state=AIR;
+   int serviceZ=kind==NetworkPlan.StationKind.MINI?8:12;
+   if(!s.northSouth()&&dx>=length-6&&Math.abs(dz-serviceZ)<=2&&h>=3&&h<=6)state=AIR;
+   // The lower transverse hall opens eastward to the shared public staircase.
+   if(s.interchange()&&s.northSouth()&&Math.abs(dx-12)<=2&&dz<=-width+4&&h>=3&&h<=6)state=AIR;
+   if(state!=null)c.put(x,n.y()+h,z,s.northSouth()?state.rotate(net.minecraft.util.BlockRotation.CLOCKWISE_90):state,state.isAir()?34:35);
   }
-  // A sparse amount of damage leaves the original bright architecture recognizable.
-  if(s.condition()==NetworkPlan.Condition.COLLAPSED){
-   c.box(n.x()-34,n.x()-31,n.y()+3,n.y()+4,n.z()+13,n.z()+14,Blocks.COBBLESTONE.getDefaultState(),36);
-   c.put(n.x()-33,n.y()+5,n.z()+13,Blocks.COBBLESTONE_SLAB.getDefaultState(),36);
+  // Every hall has a visible exit concourse, including intermediate stops.
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-4;h<=14;h++){
+   int dx=s.northSouth()?z-n.z():x-n.x(),dz=s.northSouth()?n.x()-x:z-n.z();
+   double edge=Math.min(Math.min(dx+18,-4-dx),Math.min(Math.min(dz-width,width+16-dz),Math.min(h-2,8-h)));
+   if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
+   boolean wall=dx==-18||dx==-4||dz==width+16;
+   BlockState state=h==2?Blocks.SMOOTH_QUARTZ.getDefaultState():h==8?Blocks.SEA_LANTERN.getDefaultState():wall?Blocks.WHITE_CONCRETE.getDefaultState():AIR;
+   c.put(x,n.y()+h,z,state,state.isAir()?43:42);
   }
-  String[] names={"Лазурная","Оранжерея","Северная","Белая линия","Пересадочная","Светлая","Кварцевая","Тихая"};
-  String name=kind==NetworkPlan.StationKind.FREIGHT?"Грузовой терминал":kind==NetworkPlan.StationKind.BIOCENTER?"Биоцентр / купол":s.interchange()?"Пересадочная":n.x()==0&&n.z()==0?"Центральная":names[(int)Math.floorMod(s.salt(),names.length)];
-  BlockPos signPos=new BlockPos(n.x(),n.y()+6,n.z()+16);c.signs.put(signPos,name);
-  c.put(signPos.getX(),signPos.getY(),signPos.getZ(),Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.NORTH),40);
-  // Safe landing in an uncluttered platform aisle. Return terminal is separate from circulation.
-  c.put(n.x()+2,n.y()+2,n.z()+8,Blocks.SMOOTH_QUARTZ.getDefaultState(),50);
-  c.box(n.x()+2,n.x()+2,n.y()+3,n.y()+4,n.z()+8,n.z()+8,AIR,50);
-  c.put(n.x()-10,n.y()+3,n.z()+8,InfrastructureBlocks.LIFT.getDefaultState(),50);
+  String name=s.interchange()?kind==NetworkPlan.StationKind.TERMINAL?"Вокзал / пересадка":"Пересадочная":switch(kind){case MINI->"Малая станция";case TERMINAL->"Вокзал";case FREIGHT->"Грузовой терминал";case BIOCENTER->"Биоцентр / купол";default->"Пассажирская";};
+  BlockPos signPos=local(s,0,6,width-1);c.signs.put(signPos,name);
+  localPut(c,s,0,6,width-1,Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.NORTH),50);
+  localPut(c,s,2,2,8,Blocks.SMOOTH_QUARTZ.getDefaultState(),50);
+  localPut(c,s,2,3,8,AIR,50);localPut(c,s,2,4,8,AIR,50);
+  localPut(c,s,-10,3,width+8,InfrastructureBlocks.LIFT.getDefaultState(),50);
+  localPut(c,s,-10,5,width+15,InfrastructureBlocks.WAYFINDING_SIGN.getDefaultState(),50);
+  localPut(c,s,length-16,3,width-3,Blocks.CHEST.getDefaultState(),40);
+  localPut(c,s,-length+16,3,-width+3,Blocks.CHEST.getDefaultState(),40);
   if(kind==NetworkPlan.StationKind.BIOCENTER)biocenter(c,n);
-  // Small searchable supply caches sit against the outside ends of each platform.
-  c.put(n.x()+24,n.y()+3,n.z()+14,Blocks.CHEST.getDefaultState(),40);
-  c.put(n.x()-24,n.y()+3,n.z()-14,Blocks.CHEST.getDefaultState(),40);
  }
  private static void biocenter(Canvas c,NetworkPlan.Node n){
   // A separate garden dome south of the station's maintenance wing.
@@ -85,14 +92,14 @@ public final class NetworkBuilder {
    }
   }
  }
- private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();
+ private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();RailPlan railPlan=p.service()?null:RailPlan.of(p.route());
   BlockState[] accents={Blocks.CYAN_CONCRETE.getDefaultState(),Blocks.LIME_CONCRETE.getDefaultState(),Blocks.ORANGE_CONCRETE.getDefaultState(),Blocks.LIGHT_BLUE_CONCRETE.getDefaultState(),Blocks.PURPLE_CONCRETE.getDefaultState()};
   BlockState[] glasses={Blocks.CYAN_STAINED_GLASS.getDefaultState(),Blocks.LIME_STAINED_GLASS.getDefaultState(),Blocks.ORANGE_STAINED_GLASS.getDefaultState(),Blocks.LIGHT_BLUE_STAINED_GLASS.getDefaultState(),Blocks.PURPLE_STAINED_GLASS.getDefaultState()};
   int line=Math.floorMod((int)(p.salt()>>>5),accents.length);BlockState accent=accents[line],glass=glasses[line];
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:p.route().samplesNear(x,z,12)){
    var profile=TunnelProfile.section(p.salt(),p.service(),p.transfer(),sample.along(),length);
    double width=profile.halfWidth();int fullHeight=profile.height();
-   int base=(int)Math.floor(sample.floorY());double d=profile.distance(sample);int roof=profile.roof(d);
+   int base=railPlan==null?(int)Math.floor(sample.floorY()):railPlan.floorAt(x,z,sample);double d=profile.distance(sample);int roof=profile.roof(d);
    boolean damaged=p.condition()!=NetworkPlan.Condition.INTACT;
    int bay=Math.floorMod((int)sample.along(),12);
    BlockState wall=switch(profile.style()){
@@ -119,43 +126,46 @@ public final class NetworkBuilder {
     }
     c.put(x,y,z,state,priority);
    }
-   // Ramps use half-block treads: a gentle climb without jumping full cubes.
+   // Only pedestrian corridors use slab ramps; track beds stay full solid blocks.
    double fraction=sample.floorY()-base;
-   if(fraction>0.5&&d<width-1.2)c.put(x,base+1,z,Blocks.SMOOTH_STONE_SLAB.getDefaultState(),31);
-   // Discrete vanilla rail marks the route center. Custom trains are a later layer on this spline.
-   if(!p.service()&&TransitGeometry.isTrackLane(sample,5)){
-    RailShape shape=railShape(p.route(),x,z,sample,base);
-    boolean powered=Math.floorMod((int)sample.along()+(int)(p.salt()&0x7fffffff),52)<2;
-    if(powered){
-     c.put(x,base,z,Blocks.REDSTONE_BLOCK.getDefaultState(),31);
-     if(isCurve(shape))shape=dxForShape(shape)?RailShape.EAST_WEST:RailShape.NORTH_SOUTH;
-     c.put(x,base+1,z,Blocks.POWERED_RAIL.getDefaultState().with(PoweredRailBlock.SHAPE,shape).with(PoweredRailBlock.POWERED,true),33);
-    }else c.put(x,base+1,z,Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE,shape),32);
-   }
+   if(p.service()&&fraction>0.5&&d<width-1.2)c.put(x,base+1,z,Blocks.SMOOTH_STONE_SLAB.getDefaultState(),31);
    int loc=Math.floorMod((int)sample.along()+(int)(p.salt()&63),137);
    if(p.condition()==NetworkPlan.Condition.COLLAPSED&&loc>=64&&loc<=67&&d>2.8&&d<width-1)c.put(x,base+1,z,Blocks.COBBLESTONE.getDefaultState(),33);
    if(p.condition()==NetworkPlan.Condition.CHEMICAL&&loc>=71&&loc<=73&&d>width-2&&d<width-1)c.put(x,base,z,Blocks.MAGMA_BLOCK.getDefaultState(),33);
   }
  }
- private static boolean isCurve(RailShape s){return s==RailShape.NORTH_EAST||s==RailShape.NORTH_WEST||s==RailShape.SOUTH_EAST||s==RailShape.SOUTH_WEST;}
- private static boolean dxForShape(RailShape s){return s==RailShape.NORTH_EAST||s==RailShape.NORTH_WEST;}
- private static RailShape railShape(TransitGeometry.Route route,int x,int z,TransitGeometry.Sample sample,int base){
-  double hx=sample.headingX(),hz=sample.headingZ();int dx=Math.abs(hx)>=Math.abs(hz)?(hx>=0?1:-1):0,dz=dx==0?(hz>=0?1:-1):0;
-  var ahead=route.nearest(x+dx,sample.floorY(),z+dz);var behind=route.nearest(x-dx,sample.floorY(),z-dz);
-  int next=(int)Math.floor(ahead.floorY()),prev=(int)Math.floor(behind.floorY());
-  if(next>base)return dx>0?RailShape.ASCENDING_EAST:dx<0?RailShape.ASCENDING_WEST:dz>0?RailShape.ASCENDING_SOUTH:RailShape.ASCENDING_NORTH;
-  if(prev>base)return dx>0?RailShape.ASCENDING_WEST:dx<0?RailShape.ASCENDING_EAST:dz>0?RailShape.ASCENDING_NORTH:RailShape.ASCENDING_SOUTH;
-  var incoming=route.headingAt(Math.max(0,sample.along()-2));var outgoing=route.headingAt(sample.along()+2);
-  Direction in=direction(incoming.x(),incoming.z()),out=direction(outgoing.x(),outgoing.z());
-  if(in.getAxis()!=out.getAxis()){
-   if(in==Direction.NORTH&&out==Direction.EAST||in==Direction.EAST&&out==Direction.NORTH)return RailShape.NORTH_EAST;
-   if(in==Direction.NORTH&&out==Direction.WEST||in==Direction.WEST&&out==Direction.NORTH)return RailShape.NORTH_WEST;
-   if(in==Direction.SOUTH&&out==Direction.EAST||in==Direction.EAST&&out==Direction.SOUTH)return RailShape.SOUTH_EAST;
-   if(in==Direction.SOUTH&&out==Direction.WEST||in==Direction.WEST&&out==Direction.SOUTH)return RailShape.SOUTH_WEST;
+ private static void rails(Canvas c,java.util.List<NetworkPlan.Path> paths){
+  var cells=new java.util.LinkedHashMap<BlockPos,RailPlan.Cell>();var power=new java.util.HashSet<BlockPos>();
+  for(var p:paths)if(!p.service())for(var lane:RailPlan.of(p.route()).lanes())for(var cell:lane){
+   if(cell.x()<c.sx-4||cell.x()>c.sx+19||cell.z()<c.sz-4||cell.z()>c.sz+19)continue;
+   BlockPos at=new BlockPos(cell.x(),cell.floor()+1,cell.z());cells.putIfAbsent(at,cell);
+   boolean curve=!cell.shape().startsWith("ascending_")&&!cell.shape().equals("east_west")&&!cell.shape().equals("north_south");
+   if(!curve&&cell.along()>72&&cell.along()<p.route().length()-48&&Math.floorMod((int)cell.along(),32)<2)power.add(at);
   }
-  return dx!=0?RailShape.EAST_WEST:RailShape.NORTH_SOUTH;
+  var junctions=new java.util.ArrayList<BlockPos>();
+  for(var entry:cells.entrySet()){
+   var cell=entry.getValue();var at=entry.getKey();int count=0;
+   for(var d:new Direction[]{Direction.NORTH,Direction.SOUTH,Direction.EAST,Direction.WEST})if(cells.containsKey(at.offset(d)))count++;
+   if(count>=3)junctions.add(at);
+   RailShape shape=RailShape.valueOf(cell.shape().toUpperCase(java.util.Locale.ROOT));
+   boolean powered=power.contains(at)&&count<3&&(cell.shape().startsWith("ascending_")||cell.shape().equals("east_west")||cell.shape().equals("north_south"));
+   c.put(cell.x(),cell.floor(),cell.z(),(powered?Blocks.REDSTONE_BLOCK:Blocks.POLISHED_DEEPSLATE).getDefaultState(),60);
+   c.box(cell.x(),cell.x(),cell.floor()+1,cell.floor()+3,cell.z(),cell.z(),AIR,61);
+   c.put(cell.x(),cell.floor()+1,cell.z(),powered?Blocks.POWERED_RAIL.getDefaultState().with(PoweredRailBlock.SHAPE,shape).with(PoweredRailBlock.POWERED,true):Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE,shape),62);
+  }
+  // Controls stand on the aisle, never on the track or in the minecart headroom.
+  for(var at:junctions){
+   if(at.getX()<c.sx||at.getX()>c.sx+15||at.getZ()<c.sz||at.getZ()>c.sz+15)continue;
+   boolean placed=false;
+   for(int radius=2;radius<=3&&!placed;radius++)for(int dx=-radius;dx<=radius&&!placed;dx++)for(int dz=-radius;dz<=radius&&!placed;dz++){
+    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
+    BlockPos control=at.add(dx,0,dz);BlockState state=c.peek(control.getX(),control.getY(),control.getZ());BlockState floor=c.peek(control.getX(),control.getY()-1,control.getZ());
+    if(state==null||!state.isAir()||floor==null||floor.isAir())continue;
+    if(cells.containsKey(control)||cells.containsKey(control.north())||cells.containsKey(control.south())||cells.containsKey(control.east())||cells.containsKey(control.west()))continue;
+    c.put(control.getX(),control.getY(),control.getZ(),InfrastructureBlocks.TRACK_SWITCH.getDefaultState(),65);placed=true;
+   }
+  }
  }
- private static Direction direction(double x,double z){return Math.abs(x)>=Math.abs(z)?(x>=0?Direction.EAST:Direction.WEST):(z>=0?Direction.SOUTH:Direction.NORTH);}
  private static void room(Canvas c,NetworkPlan.Room r){
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=r.height()+6;h++){
    int edge=Math.min(Math.min(Math.min(x-r.x1(),r.x2()-x),Math.min(z-r.z1(),r.z2()-z)),Math.min(h,r.height()-h));
@@ -196,6 +206,9 @@ public final class NetworkBuilder {
    int x1=east?t.x()+8:t.x()-3,x2=east?t.x()+10:t.x()-1;
    c.box(x1,x2,start+8,start+8,t.z(),t.z()+8,Blocks.SMOOTH_QUARTZ.getDefaultState(),44);
   }
+  // The upper landing crosses between the two flights without covering stair headroom.
+  c.box(t.x()-3,t.x()-1,t.top(),t.top(),t.z(),t.z()+8,Blocks.SMOOTH_QUARTZ.getDefaultState(),44);
+  c.box(t.x(),t.x()+10,t.top(),t.top(),t.z()+3,t.z()+5,Blocks.SMOOTH_QUARTZ.getDefaultState(),44);
   // Public openings at both levels; service galleries connect on the left side.
   for(int floor:new int[]{t.bottom(),t.top()})c.box(t.x()-3,t.x()-1,floor+1,floor+4,t.z(),t.z()+2,AIR,46);
  }

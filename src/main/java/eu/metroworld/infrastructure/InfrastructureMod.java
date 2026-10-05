@@ -23,6 +23,7 @@ public final class InfrastructureMod implements ModInitializer {
   CommandRegistrationCallback.EVENT.register((dispatcher,registries,environment)->{
    dispatcher.register(CommandManager.literal("metro-world").requires(s->s.hasPermissionLevel(2))
     .executes(c->{c.getSource().sendFeedback(()->Text.literal("Metro World: /metro-world enter, /metro-world exit, /metro-world entrance. Измерение: metro-world:metro-world; диапазон высот −256…255."),false);return 1;})
+    .then(CommandManager.literal("validate-tracks").executes(c->TrackValidation.run(c.getSource())))
     .then(CommandManager.literal("enter").executes(c->Transit.enter(c.getSource().getPlayerOrThrow())))
     .then(CommandManager.literal("exit").executes(c->Transit.leave(c.getSource().getPlayerOrThrow())))
     .then(CommandManager.literal("entrance").executes(c->{

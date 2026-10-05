@@ -20,6 +20,7 @@ public abstract class EntranceGeneratorMixin {
  @Inject(method="generateFeatures",at=@At("TAIL"))
  private void metroWorld$entrance(StructureWorldAccess world,Chunk chunk,StructureAccessor structures,CallbackInfo ci){
   if(!((Object)this instanceof NoiseChunkGenerator)||!world.toServerWorld().getRegistryKey().equals(World.OVERWORLD))return;
+  metroWorld$plannedEntrance(world,chunk);
   metroWorld$treeHatch(world,chunk);
   var registry=world.getRegistryManager().get(RegistryKeys.STRUCTURE);
   java.util.Set<net.minecraft.structure.StructureStart> starts=new java.util.HashSet<>();
@@ -53,6 +54,27 @@ public abstract class EntranceGeneratorMixin {
    world.setBlockState(pos.set(x-2,y+1,z+2),Blocks.PINK_TULIP.getDefaultState(),2);
    org.slf4j.LoggerFactory.getLogger("metro-world").info("Вход метро рядом с {}: {}, {}, {}",registry.getId(start.getStructure()),x,y,z);
   }
+ }
+ private void metroWorld$plannedEntrance(StructureWorldAccess world,Chunk chunk){
+  int cx=chunk.getPos().getStartX()+8,cz=chunk.getPos().getStartZ()+8;
+  var anchor=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(world.getSeed(),cx*8.0,cz*8.0);
+  int x=Math.floorDiv(Math.floorDiv(anchor.x(),8),16)*16+8,z=Math.floorDiv(Math.floorDiv(anchor.z(),8),16)*16+8;
+  if(Math.floorDiv(x,16)!=chunk.getPos().x||Math.floorDiv(z,16)!=chunk.getPos().z)return;
+  int y=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,x,z);
+  if(y<world.getSeaLevel()||y>world.getTopY()-7)return;
+  for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+   int top=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,x+dx,z+dz);
+   if(Math.abs(top-y)>1||!world.getFluidState(new BlockPos(x+dx,top-1,z+dz)).isEmpty())return;
+   for(int h=0;h<4;h++)if(!world.getBlockState(new BlockPos(x+dx,y+h,z+dz)).isReplaceable())return;
+  }
+  for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+   world.setBlockState(new BlockPos(x+dx,y-1,z+dz),Blocks.SMOOTH_QUARTZ.getDefaultState(),2);
+   world.setBlockState(new BlockPos(x+dx,y+3,z+dz),Blocks.WHITE_CONCRETE.getDefaultState(),2);
+   if(Math.abs(dx)==2||dz==2)for(int h=0;h<3;h++)world.setBlockState(new BlockPos(x+dx,y+h,z+dz),Blocks.CYAN_STAINED_GLASS.getDefaultState(),2);
+  }
+  world.setBlockState(new BlockPos(x,y,z+1),InfrastructureBlocks.LIFT.getDefaultState(),2);
+  world.setBlockState(new BlockPos(x,y+2,z),Blocks.SEA_LANTERN.getDefaultState(),2);
+  world.setBlockState(new BlockPos(x,y+2,z-2),InfrastructureBlocks.WAYFINDING_SIGN.getDefaultState(),2);
  }
  private void metroWorld$treeHatch(StructureWorldAccess world,Chunk chunk){
   // Rare service entrances, contained entirely in the owning chunk.

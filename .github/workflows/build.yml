@@ -26,6 +26,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Check discrete rail connectivity
+        run: bash scripts/check-rail-geometry.sh
       - run: bash ./gradlew --no-daemon test build
       - name: Prepare fixed filename
         run: cp "$(find build/libs -maxdepth 1 -type f -name 'metro-world-*.jar' ! -name '*-sources.jar' -print -quit)" build/libs/metro-world.jar

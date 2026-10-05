@@ -29,17 +29,10 @@ class TransitGeometryTest {
         assertEquals(0,h.points().getLast().z(),1e-8);
         assertFalse(h.intersects(1000,1000,10));
     }
-    @Test void rasterizedRailsCoverBothSidesOfHelicalTurns(){
-        var h=TransitGeometry.helix(new TransitGeometry.Point(0,0,0),96,30);int rails=0,high=0;
-        for(int x=-34;x<=34;x++)for(int z=-4;z<=64;z++)for(var s:h.samplesNear(x,z,11))
-            if(TransitGeometry.isTrackLane(s,5)){rails++;if(s.floorY()>48)high++;}
-        assertTrue(rails>900,"both sides of the spiral should receive rails");
-        assertTrue(high>200,"rail lanes must continue on the upper turns too");
-    }
     @Test void crosslineSpiralHasASeparateBay(){
         var a=new TransitGeometry.Point(0,0,0);var b=new TransitGeometry.Point(512,96,512);
         var main=TransitGeometry.between(a,b,0,40,8);var cross=TransitGeometry.between(a,b,1,40,8);
         assertTrue(main.points().stream().anyMatch(p->Math.abs(p.x()-104)<1e-8&&Math.abs(p.y())<1e-8&&Math.abs(p.z())<1e-8));
-        assertTrue(cross.points().stream().anyMatch(p->Math.abs(p.x()-232)<1e-8&&Math.abs(p.y())<1e-8&&Math.abs(p.z())<1e-8));
+        assertTrue(cross.points().stream().anyMatch(p->Math.abs(p.x()-232)<1e-8&&Math.abs(p.y())<1e-8&&Math.abs(p.z()+112)<1e-8));
     }
 }

@@ -1,13 +1,8 @@
-# Metro World 0.5.3 checks
+# Metro World 0.6.0 checks
 
-- JSON resources parsed successfully and shell scripts passed bash -n.
-- Regression tests added for reverse coordinate scaling, negative-coordinate cells, architectural coverage, 2×2 clearance and light density.
-- Legacy types remain registered unchanged. The active dimension points to metro-world:metro-world with coordinate_scale 0.125.
-- Gradle test/build could not run locally: the Gradle distribution is absent and its download is blocked; only Java 17 runtime is installed. CI uses Java 21 and runs test/build.
-- Minecraft rendering, traversal, lighting and Docker image execution have not been verified locally.
-
-Container preparation: mocked checks passed for Fabric/1.21.1 filtering, four-mod manifest generation, SHA-512 mismatch rejection, workflow/Compose YAML and shell syntax. Actual mod downloads and Docker execution were not available in this workspace.
-
-Container smoke-test and status checker added. Shell/YAML syntax and the status checker were checked locally; actual Docker startup must run in CI because Docker is not installed here.
-
-CI grep fix: three orchestration regression tests passed (no ripgrep, large logs, wrong online mode, crash rejection and cleanup). These use a Docker fixture, not an actual Minecraft server.
+- Actual Java geometry and planner classes compiled and executed locally using the Java compiler module.
+- Historical geometry stress tests: 162 routes and 862,764 rail cells passed continuity, lane overlap, arrival height and legal slope checks.
+- New regional graph: all 217 active stations in the tested region reachable from origin, reciprocal edges and degrees checked. Four seeds, 168 routes, 149,816 rails and 6,012 chunk ownership checks passed. Station doorway coordinates verified at both ends. Primary route coordinates never reverse; rail chains reach station port heights without gaps or overlaps.
+- Three mocked Docker orchestration regression tests passed. Java source parsing, JSON/YAML and shell syntax checks passed.
+- CI checks actual generated blocks on both central lines, station throats, headroom, support and exit concourses before publishing.
+- Full Gradle build was attempted but the distribution download failed with Network is unreachable. Java 21, Minecraft-dependent compilation, Docker/server launch and visual traversal were not verified locally. The CI checks must pass before using the new image.

@@ -32,8 +32,7 @@ public final class Transit {
   if(target==null){p.sendMessage(Text.literal("Измерение метро не загружено: требуется перезапуск сервера."));return 0;}
   double sourceX=returnPos==null?p.getX():returnPos.getX()+0.5;
   double sourceZ=returnPos==null?p.getZ():returnPos.getZ()+0.5;
-  int gx=TransitScale.stationCell(TransitScale.toMetro(sourceX)),gz=TransitScale.stationCell(TransitScale.toMetro(sourceZ));
-  var station=eu.metroworld.infrastructure.world.NetworkPlan.node(target.getSeed(),gx,gz);
+  var station=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(target.getSeed(),TransitScale.toMetro(sourceX),TransitScale.toMetro(sourceZ));
   try{
    Properties props=read(p);props.setProperty(p.getUuidAsString(),p.getWorld().getRegistryKey().getValue()+","+(returnPos==null?p.getX():returnPos.getX()+0.5)+","+(returnPos==null?p.getY():returnPos.getY())+","+(returnPos==null?p.getZ():returnPos.getZ()+0.5)+","+p.getYaw()+","+p.getPitch()+","+station.x()+","+station.z());
    Path tmp=file(p).resolveSibling("metro-world-return.properties.tmp");

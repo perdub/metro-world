@@ -38,6 +38,9 @@ printf '%s\n' "$output" | tee build/container-check/dimension.txt
 printf '%s\n' "$output" | grep -E 'The time is [0-9]+' >/dev/null
 docker exec "$name" rcon-cli 'execute in metro-world:metro-world run forceload add -16 -16 16 16' > build/container-check/worldgen.txt
 sleep 10
+output=$(docker exec "$name" rcon-cli 'metro-world validate-tracks')
+printf '%s\n' "$output" | tee build/container-check/tracks.txt
+printf '%s\n' "$output" | grep -F 'TRACKS_OK:' >/dev/null
 docker exec "$name" rcon-cli list > build/container-check/rcon.txt
 # Query Minecraft status through the published host port.
 port=$(docker port "$name" 25565/tcp | sed 's/.*://')
