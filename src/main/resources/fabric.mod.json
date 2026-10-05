@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "metro-world",
+  "version": "${version}",
+  "name": "Metro World",
+  "description": "Chunk-local underground transit network prototype.",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "eu.metroworld.infrastructure.InfrastructureMod"
+    ]
+  },
+  "mixins": [
+    "metro-world.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "polymer-core": "*"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "btr_infrastructure:concrete_panel",
+    "btr_infrastructure:hazard_marker",
+    "btr_infrastructure:chemical_container",
+    "btr_infrastructure:ribbed_panel",
+    "btr_infrastructure:tactile_tile",
+    "btr_infrastructure:wayfinding_sign"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "generator.btr_infrastructure.network_flat": "Underground network — deep flat world",
+  "block.btr_infrastructure.concrete_panel": "Concrete panel",
+  "block.btr_infrastructure.hazard_marker": "Hazard marker",
+  "block.btr_infrastructure.chemical_container": "Chemical container",
+  "block.btr_infrastructure.lift_terminal": "Metro lift terminal",
+  "block.btr_infrastructure.ribbed_panel": "Ribbed panel",
+  "block.btr_infrastructure.tactile_tile": "Tactile tile",
+  "block.btr_infrastructure.wayfinding_sign": "Wayfinding panel"
+}
