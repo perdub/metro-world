@@ -22,6 +22,7 @@ public final class SpecialStations {
   if(ax<30&&az>=11&&az<=14&&bay>=3&&bay<=7&&y>=3&&y<=5){
    if(y==3)return Blocks.SPRUCE_SLAB.getDefaultState().with(SlabBlock.TYPE,SlabType.TOP);
    if(y==4)return (bay==5?Blocks.CHEST:Blocks.BARREL).getDefaultState();
+   if(y==5&&bay==5)return Blocks.AIR.getDefaultState();
    if(y==5&&bay>=4&&bay<=6)return Blocks.WAXED_CUT_COPPER.getDefaultState();
   }
   // Overhead gantry, uprights and suspended hooks above the loading bays.
@@ -33,32 +34,40 @@ public final class SpecialStations {
   if(y==3&&az==9&&Math.floorMod(x,18)==9)return Blocks.LANTERN.getDefaultState();
   return original;
  }
- public static BlockState garden(int x,int y,int z){
-  double horizontal=Math.sqrt(x*x+z*z);
+ public static BlockState garden(int x,int y,int z){return garden(x,y,z,DomeDesign.legacy());}
+ public static BlockState garden(int x,int y,int z,DomeDesign.Spec spec){
+  double horizontal=Math.hypot(x,z),radius=Math.sqrt((double)x*x+(double)z*z+(double)y*y);
+  int inner=spec.innerRadius(),outer=spec.outerRadius();
   if(y<0){
-   if(horizontal>34)return null;
+   if(horizontal>outer)return null;
    return (y>=-3?Blocks.STONE:y>=-5?Blocks.OBSIDIAN:Blocks.BEDROCK).getDefaultState();
   }
-  double radius=Math.sqrt(x*x+z*z+y*y);
-  if(radius>34)return null;
-  if(radius>=28)return (radius<31?Blocks.STONE:radius<33?Blocks.OBSIDIAN:Blocks.BEDROCK).getDefaultState();
-  // Blue backdrop and white cloud bands are separated from the clear glass by a lit cavity.
-  if(radius>=27){
-   if(Math.floorMod(x+2*z,13)<3&&y>10)return Blocks.WHITE_CONCRETE.getDefaultState();
-   if(Math.floorMod(x+z,7)==0)return Blocks.SEA_LANTERN.getDefaultState();
-   return Blocks.LIGHT_BLUE_CONCRETE.getDefaultState();
+  if(radius>outer)return null;
+  if(radius>=inner+5)return (radius<outer-3?Blocks.STONE:radius<outer-1?Blocks.OBSIDIAN:Blocks.BEDROCK).getDefaultState();
+  if(radius>=inner+4){
+   if(spec.kind()==DomeDesign.Kind.AQUA)return (Math.floorMod(x+z,9)==0?Blocks.SEA_LANTERN:Blocks.BLUE_CONCRETE).getDefaultState();
+   if(Math.floorMod(x+2*z,13)<3&&y>inner/2)return Blocks.WHITE_CONCRETE.getDefaultState();
+   return (Math.floorMod(x+z,7)==0?Blocks.SEA_LANTERN:Blocks.LIGHT_BLUE_CONCRETE).getDefaultState();
   }
-  if(radius>=24.2)return Blocks.AIR.getDefaultState();
-  if(radius>=23.2)return (Math.floorMod(x,8)==0||Math.floorMod(z,8)==0?Blocks.WHITE_STAINED_GLASS:Blocks.GLASS).getDefaultState();
-  boolean path=Math.abs(x)<=2||Math.abs(z)<=2||horizontal>=19;
-  if(y==0)return (path?Blocks.SMOOTH_QUARTZ:Blocks.GRASS_BLOCK).getDefaultState();
-  // Retro laboratory consoles and a red-and-white perimeter ribbon.
-  if(horizontal>=21&&y==1)return Blocks.RED_CONCRETE.getDefaultState();
-  if(horizontal>=21&&y==2)return Blocks.WHITE_CONCRETE.getDefaultState();
-  if(x>=-18&&x<=-16&&z>=-6&&z<=6&&y==1)return Blocks.SMOOTH_QUARTZ.getDefaultState();
-  if(x==-17&&Math.floorMod(z,3)==0&&Math.abs(z)<=6&&y==2)return Blocks.CYAN_GLAZED_TERRACOTTA.getDefaultState();
-  // Four compact planted trees: trunks, shaped leafy crowns and flowering understory.
-  for(int tx:new int[]{-11,11})for(int tz:new int[]{-11,11}){
+  if(radius>=inner+1.2)return Blocks.AIR.getDefaultState();
+  if(radius>=inner+.2)return (Math.floorMod(x,8)==0||Math.floorMod(z,8)==0?Blocks.WHITE_STAINED_GLASS:Blocks.GLASS).getDefaultState();
+  boolean path=DomeDesign.dryPath(spec,x,z);
+  if(y==0)return (path?Blocks.SMOOTH_QUARTZ:spec.kind()==DomeDesign.Kind.AQUA?(Math.floorMod(x*11+z*23,17)==0?Blocks.SEA_LANTERN:Math.floorMod(x+z,5)==0?Blocks.PRISMARINE:Blocks.MOSS_BLOCK):Blocks.GRASS_BLOCK).getDefaultState();
+  if(spec.kind()==DomeDesign.Kind.AQUA){
+   // Four sealed tanks leave a dry cross and a dry perimeter promenade.
+   if(DomeDesign.tankWall(spec,x,z)&&y<=5)return Blocks.LIGHT_BLUE_STAINED_GLASS.getDefaultState();
+   if(DomeDesign.water(spec,x,y,z)){
+    if(Math.floorMod(x*31+z*17,19)==0&&y<=3)return (y==3?Blocks.KELP:Blocks.KELP_PLANT).getDefaultState();
+    return Blocks.WATER.getDefaultState();
+   }
+   if(!path&&y==1&&Math.floorMod(x*31+z*17,13)==0)return Blocks.PRISMARINE.getDefaultState();
+   if(path&&y==1&&Math.abs(x)==2&&Math.floorMod(z,7)==0)return Blocks.SEA_LANTERN.getDefaultState();
+   return Blocks.AIR.getDefaultState();
+  }
+  if(horizontal>=inner-2&&y==1)return Blocks.RED_CONCRETE.getDefaultState();
+  if(horizontal>=inner-2&&y==2)return Blocks.WHITE_CONCRETE.getDefaultState();
+  int tree=inner/2;
+  for(int tx:new int[]{-tree,tree})for(int tz:new int[]{-tree,tree}){
    int dx=x-tx,dz=z-tz;
    if(dx==0&&dz==0&&y>=1&&y<=5)return Blocks.OAK_LOG.getDefaultState();
    if(y>=4&&y<=8&&dx*dx+dz*dz+(y-6)*(y-6)<=12)return Blocks.OAK_LEAVES.getDefaultState().with(net.minecraft.block.LeavesBlock.PERSISTENT,true);

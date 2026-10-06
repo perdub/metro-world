@@ -1,8 +1,8 @@
-# Metro World 0.7.0 checks
+# Metro World 0.9.0 checks
 
-- Executed actual pure Java planner and rail classes locally: 217 connected stations, four seeds, 168 edges, 21 spiral connections, 179,922 rail cells and 8,036 chunk ownership checks passed. Individual lane endpoints match the rail spacing of their destination station layouts. Rail chains have no gaps, overlapping cells or illegal height jumps.
-- Historical geometry stress suite: 162 routes, 862,764 rail cells passed.
-- 42 station-type searches match their generated station kinds/orientations; 36 biocenter searches checked against regional candidates.
-- Java syntax parsing, JSON/YAML and shell syntax checks passed. Three mocked Docker orchestration tests passed, including the expanded locate-command checks.
-- Actual container validation now samples central connections, a spiral, a split and an island layout, then checks station tracks, supports, headroom, exit concourses and locate commands.
-- Minecraft-dependent compilation, live server/container launch, visual inspection and minecart traversal remain unverified locally. No Docker CLI is available; Gradle dependencies require inaccessible network endpoints in this workspace. CI must pass before image publication.
+- Standalone Java historical rail geometry suite: 162 routes and 862,764 rail cells passed (connections, arrival heights, lane overlap, slopes and floors).
+- Three-dimensional planner checks passed: 230 routed edges, 825,848 rail cells, 101 large-rise routed cases, 626 height-dependent occupied columns and 1,397 whole-volume clear boxes. They cover noise exclusion, whole-volume clearance, random station thinning, typed traffic connections, locators, chunk ownership and rail cells. Full results appear in the geometry script output; checks fail on the first violation.
+- Content checks passed: four botanical annex kinds, 300,000 protected aisle cells; four side-branch kinds and 48 reachable room layouts, including quarantine spawner positions.
+- Java syntax parsing passed for 48 source/test files. All 38 JSON resources parsed. Shell syntax and seven Python loot/mock-container tests passed.
+- Container CI runs actual generated-block rail checks and `validate-features`: portal arrival, return concourse, aquarium water/dry access, botanical aisle/chest, quarantine spawner block entities and resolved reward loot. Image publication is gated by container success.
+- Local Gradle test/build could not start because services.gradle.org was unreachable. Docker is unavailable here. Minecraft-dependent compilation, live server behavior, visual inspection, minecart/player travel, audible music and actual zombie spawning therefore remain unverified locally. Standalone planner/syntax checks are not a substitute for the container gate.

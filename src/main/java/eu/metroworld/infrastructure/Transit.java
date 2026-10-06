@@ -11,6 +11,9 @@ import net.minecraft.util.WorldSavePath;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.Heightmap;
+import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
+import net.minecraft.util.math.Direction;
 public final class Transit {
  public static final RegistryKey<World> UNDERGROUND=RegistryKey.of(RegistryKeys.WORLD,Identifier.of("metro-world","metro-world"));
  private static final String LEGACY_NAMESPACE="btr_infrastructure";
@@ -32,15 +35,19 @@ public final class Transit {
   if(target==null){p.sendMessage(Text.literal("Измерение метро не загружено: требуется перезапуск сервера."));return 0;}
   double sourceX=returnPos==null?p.getX():returnPos.getX()+0.5;
   double sourceZ=returnPos==null?p.getZ():returnPos.getZ()+0.5;
-  var station=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(target.getSeed(),TransitScale.toMetro(sourceX),TransitScale.toMetro(sourceZ));
+  eu.metroworld.infrastructure.world.NetworkPlan.Node station;
+  try{station=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(target.getSeed(),TransitScale.toMetro(sourceX),TransitScale.toMetro(sourceZ));}
+  catch(IllegalStateException e){p.sendMessage(Text.literal("Рядом не найдена доступная входная станция. Попробуй другой вход."));return 0;}
+  int arrivalX=station.x()+2;
+  target.getChunk(Math.floorDiv(arrivalX,16),Math.floorDiv(station.z()+8,16));
+  BlockPos arrival=new BlockPos(arrivalX,station.y()+3,station.z()+8);
+  if(!safeFeet(target,arrival)){p.sendMessage(Text.literal("Площадка станции недоступна. Переход отменён; обновите старое измерение метро."));return 0;}
   try{
-   Properties props=read(p);props.setProperty(p.getUuidAsString(),p.getWorld().getRegistryKey().getValue()+","+(returnPos==null?p.getX():returnPos.getX()+0.5)+","+(returnPos==null?p.getY():returnPos.getY())+","+(returnPos==null?p.getZ():returnPos.getZ()+0.5)+","+p.getYaw()+","+p.getPitch()+","+station.x()+","+station.z());
+   Properties props=read(p);props.setProperty(p.getUuidAsString(),p.getWorld().getRegistryKey().getValue()+","+(returnPos==null?p.getX():returnPos.getX()+0.5)+","+(returnPos==null?p.getY():returnPos.getY())+","+(returnPos==null?p.getZ():returnPos.getZ()+0.5)+","+p.getYaw()+","+p.getPitch()+","+station.x()+","+station.z()+","+station.y());
    Path tmp=file(p).resolveSibling("metro-world-return.properties.tmp");
    try(var out=Files.newOutputStream(tmp)){props.store(out,"Metro World return positions");}
    Files.move(tmp,file(p),StandardCopyOption.REPLACE_EXISTING);
   }catch(IOException e){p.sendMessage(Text.literal("Не удалось сохранить точку возвращения; переход отменён."));return 0;}
-  int arrivalX=station.x()+2;
-  target.getChunk(Math.floorDiv(arrivalX,16),Math.floorDiv(station.z()+8,16));
   p.teleport(target,arrivalX+0.5,station.y()+3,station.z()+8.5,90,0);
   p.sendMessage(Text.literal("Метро: станция. Лифт возвращения — слева, чёрно-жёлтый блок. Высоты станций и тоннелей меняются по пути."));
   return 1;
@@ -51,8 +58,13 @@ public final class Transit {
    String saved=read(p).getProperty(p.getUuidAsString());
    if(saved!=null){String[] s=saved.split(",");if(s.length<7)throw new IllegalArgumentException("Invalid return position");ServerWorld w=p.getServer().getWorld(RegistryKey.of(RegistryKeys.WORLD,Identifier.of(s[0])));
     // Legacy saves have no anchor and keep their exact original return behaviour.
-    boolean atEntry=s.length<9||Math.hypot(p.getX()-Double.parseDouble(s[7]),p.getZ()-Double.parseDouble(s[8]))<110;
-    if(w!=null&&atEntry){p.teleport(w,Double.parseDouble(s[1]),Double.parseDouble(s[2]),Double.parseDouble(s[3]),Float.parseFloat(s[4]),Float.parseFloat(s[5]));return 1;}
+    boolean atEntry=s.length<9||(Math.hypot(p.getX()-Double.parseDouble(s[7]),p.getZ()-Double.parseDouble(s[8]))<110&&(s.length<10||Math.abs(p.getY()-Double.parseDouble(s[9]))<100));
+    if(w!=null&&atEntry){
+     BlockPos original=BlockPos.ofFloored(Double.parseDouble(s[1]),Double.parseDouble(s[2]),Double.parseDouble(s[3]));
+     BlockPos safe=findNearby(w,original);
+     if(safe==null)safe=findSurface(w,original.getX(),original.getZ());
+     if(safe!=null){p.teleport(w,safe.getX()+0.5,safe.getY(),safe.getZ()+0.5,Float.parseFloat(s[4]),Float.parseFloat(s[5]));return 1;}
+    }
    }
   }catch(IOException|IllegalArgumentException e){p.sendMessage(Text.literal("Точка возвращения недоступна; ищем выход по масштабу 8:1."));}
   ServerWorld w=p.getServer().getOverworld();
@@ -64,12 +76,26 @@ public final class Transit {
  private static BlockPos findSurface(ServerWorld world,int x,int z){
   x=(int)Math.clamp((long)x,(long)Math.ceil(world.getWorldBorder().getBoundWest())+2,(long)Math.floor(world.getWorldBorder().getBoundEast())-2);
   z=(int)Math.clamp((long)z,(long)Math.ceil(world.getWorldBorder().getBoundNorth())+2,(long)Math.floor(world.getWorldBorder().getBoundSouth())-2);
-  for(int radius=0;radius<=16;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
+  for(int radius=0;radius<=48;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
    BlockPos pos=world.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,new BlockPos(x+dx,0,z+dz));
-   BlockPos floor=pos.down();var state=world.getBlockState(floor);
-   if(!world.getWorldBorder().contains(pos)||!state.isSolidBlock(world,floor)||!world.getFluidState(floor).isEmpty()||state.isOf(net.minecraft.block.Blocks.MAGMA_BLOCK)||state.isOf(net.minecraft.block.Blocks.CACTUS))continue;
-   if(world.getBlockState(pos).isAir()&&world.getBlockState(pos.up()).isAir())return pos;
+   if(safeFeet(world,pos))return pos;
+  }
+  return null;
+ }
+ static boolean safeFeet(ServerWorld world,BlockPos pos){
+  if(pos.getY()<=world.getBottomY()||pos.getY()+1>=world.getTopY()||!world.getWorldBorder().contains(pos))return false;
+  BlockPos floor=pos.down();var state=world.getBlockState(floor);
+  if(!Block.sideCoversSmallSquare(world,floor,Direction.UP)||!world.getFluidState(floor).isEmpty()
+    ||state.isOf(Blocks.MAGMA_BLOCK)||state.isOf(Blocks.CACTUS)||state.isOf(Blocks.CAMPFIRE)||state.isOf(Blocks.SOUL_CAMPFIRE))return false;
+  for(int h=0;h<2;h++){BlockPos at=pos.up(h);if(!world.getFluidState(at).isEmpty()||!world.getBlockState(at).getCollisionShape(world,at).isEmpty()||world.getBlockState(at).isOf(Blocks.FIRE)||world.getBlockState(at).isOf(Blocks.SOUL_FIRE))return false;}
+  return true;
+ }
+ private static BlockPos findNearby(ServerWorld world,BlockPos original){
+  world.getChunk(Math.floorDiv(original.getX(),16),Math.floorDiv(original.getZ(),16));
+  for(int radius=0;radius<=4;radius++)for(int dy:new int[]{0,1,-1,2,-2})for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
+   if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
+   BlockPos at=original.add(dx,dy,dz);if(safeFeet(world,at))return at;
   }
   return null;
  }

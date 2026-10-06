@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0
+
+- Make reserved noise volumes genuinely three-dimensional; station elevations and bounded 3D bypasses can pass above or below obstacles without cutting their protected volumes.
+- Add small, medium and large bio/aqua domes, sealed aquarium tanks and dry public routes. Add greenhouse, seed-bank, laboratory and overgrown-nursery annexes.
+- Add occasional dead-end branches: secret stops, abandoned depots, technical galleries and quarantine rooms with three zombie spawners. Broken inactive rails stay separate from operational tracks.
+- Vary station halls, public bridges, cargo galleries and damage: missing panels, moss, rubble, dim lights and quarantine markings while protecting walking and rail paths.
+- Add aquarium, botanical-laboratory, seed-bank and relic-vault loot tables, including bounded rare rewards.
+- Add individual vanilla ambient music and `/metro-world-music on|off`; no resource pack or client mod is required for these existing sounds.
+- Improve portal arrival and return safety. Add `locate aquarium` and generated-block/loot/spawner checks through `validate-features` in container CI.
+- Use a fresh metro dimension or separate test world: existing chunks are not rewritten. Live Minecraft verification remains required in CI.
+
 ## 0.7.0
 
 - Add central-track stations with side platforms and island stations with tracks along both sides of a wide central platform. Connect island platforms to exit aisles with public stairs and a bridge.

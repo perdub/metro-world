@@ -124,7 +124,7 @@ public final class TransitGeometry {
     public static Route spiralConnection(Point a,Point b,boolean northSouth,int aLength,int bLength){
         double start=(northSouth?a.z:a.x)+aLength,end=(northSouth?b.z:b.x)-bLength;
         double v0=northSouth?a.x:a.z,v1=northSouth?b.x:b.z;
-        if(Math.abs(b.y-a.y)<48||end-start<320)return connection(a,b,northSouth,aLength,bLength);
+        if(Math.abs(b.y-a.y)<32||end-start<320)return connection(a,b,northSouth,aLength,bLength);
         double bay=v0+(northSouth?-156:96),u=start+192;
         var approach=rounded(List.of(new Point(start,a.y,v0),new Point(start+80,a.y,v0),new Point(start+80,a.y,bay),new Point(u,a.y,bay)),16);
         var points=new ArrayList<Point>(approach.points());

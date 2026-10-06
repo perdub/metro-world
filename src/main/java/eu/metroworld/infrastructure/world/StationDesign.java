@@ -27,12 +27,23 @@ public final class StationDesign {
         return sample(x,y,z,length,width,height,salt,0);
     }
     public static BlockState sample(int x,int y,int z,int length,int width,int height,long salt,int expansion){
+        return sample(x,y,z,length,width,height,salt,expansion,StationVariant.select(salt,length,width,height,expansion));
+    }
+    public static BlockState sample(int x,int y,int z,int length,int width,int height,long salt,int expansion,StationVariant variant){
         int gap=3+expansion;boolean island=expansion>0;
         int ax = Math.abs(x), az = Math.abs(z);
         if (ax > length || az > width || y < 0 || y > height) return null;
         BlockState accent = ((salt & 1) == 0 ? Blocks.CYAN_CONCRETE : (salt&4)==0?Blocks.BLUE_CONCRETE:Blocks.LIME_CONCRETE).getDefaultState();
         BlockState glass = ((salt & 1) == 0 ? Blocks.CYAN_STAINED_GLASS : (salt&4)==0?Blocks.LIGHT_BLUE_STAINED_GLASS:Blocks.LIME_STAINED_GLASS).getDefaultState();
-        int roof = height - (az > width - 4 ? 2 : az > width - 7 ? 1 : 0);
+        int roof = variant.roof(z,width,height);
+        // Reserve vehicle headroom before any architectural decoration.
+        if(StationVariant.vehicleClearance(y,z,expansion)){
+            if(y==1&&az==gap)return Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE,RailShape.EAST_WEST);
+            return Blocks.AIR.getDefaultState();
+        }
+        if(variant==StationVariant.LOGISTICS){
+            accent=Blocks.ORANGE_CONCRETE.getDefaultState();glass=Blocks.YELLOW_STAINED_GLASS.getDefaultState();
+        }
         if (y >= roof) {
             if (y == roof && (az == 7 || az == width - 3) && Math.floorMod(x, 4) != 0)
                 return Blocks.SEA_LANTERN.getDefaultState();
@@ -79,8 +90,13 @@ public final class StationDesign {
             if(Math.abs(z)<=1&&x>=bridgeX-flight&&x<bridgeX){int top=3+x-(bridgeX-flight);if(y<top&&y>=2)return Blocks.SMOOTH_QUARTZ.getDefaultState();if(y==top)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Direction.EAST);}
             if(az>=width-3&&az<=width-2&&x>bridgeX&&x<=bridgeX+flight){int top=bridgeFloor-(x-bridgeX);if(y<top&&y>=2)return Blocks.SMOOTH_QUARTZ.getDefaultState();if(y==top)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Direction.WEST);}
         }
+        // A distinct cargo-side equipment gallery, outside the passenger walking aisle.
+        if(variant==StationVariant.LOGISTICS&&ax<length-18&&az==width-1){
+            if(y==3&&Math.floorMod(x,10)<3)return Blocks.BARREL.getDefaultState();
+            if(y==5&&Math.floorMod(x,10)==0)return Blocks.IRON_BARS.getDefaultState();
+        }
         // Repeated slim structural ribs, with lit capitals and open pedestrian aisles.
-        boolean rib = Math.floorMod(x, 12) == 0 && ax < length - 4;
+        boolean rib = Math.floorMod(x, variant==StationVariant.COMPACT_SIDE?16:variant==StationVariant.DISTRIBUTION_HALL?20:12) == 0 && ax < length - 4;
         if (rib && az == width - 4 && y >= 3 && y < roof) {
             if (y == roof - 1) return Blocks.SEA_LANTERN.getDefaultState();
             return InfrastructureBlocks.RIBBED_PANEL.getDefaultState();
@@ -88,7 +104,7 @@ public final class StationDesign {
         if (rib && y == roof - 1 && az >= 5) return Blocks.SMOOTH_QUARTZ.getDefaultState();
         // A real six-step public stair to a mezzanine on both side platforms.
         // Small station variants simply omit it rather than producing clipped stairs.
-        if (length >= 34 && width >= 15 && height >= 13) {
+        if (variant.mezzanine() && length >= 34 && width >= 15 && height >= 13) {
             int stairStart = length - 24, stairEnd = stairStart + 5;
             if (az >= 10 && az <= 12 && x >= stairStart && x <= stairEnd) {
                 int stepY = 3 + x - stairStart;
@@ -102,7 +118,7 @@ public final class StationDesign {
             }
         }
         // Some stations have an upper pedestrian bridge linking both mezzanines.
-        if((salt&8)!=0&&x>=length-16&&x<=length-12&&az<width){
+        if(variant.overheadBridge()&&height>=13&&x>=length-16&&x<=length-12&&az<width){
             if(y==8)return Blocks.SMOOTH_QUARTZ.getDefaultState();
             if(az<8&&(x==length-16||x==length-12)&&(y==9||y==10))return Blocks.LIME_STAINED_GLASS.getDefaultState();
         }

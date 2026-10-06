@@ -3,60 +3,36 @@ import java.util.*;
 public class StationGraphChecks {
  static void check(boolean v,String m){if(!v)throw new AssertionError(m);}
  public static void main(String[] args){
-  var seen=new HashSet<StationGraph.Index>();var queue=new ArrayDeque<StationGraph.Index>();queue.add(new StationGraph.Index(0,0));
-  while(!queue.isEmpty()){var at=queue.remove();if(!seen.add(at))continue;var ns=StationGraph.neighbours(at.x(),at.z());check(ns.size()==(StationGraph.anchor(at.x(),at.z())?4:2),"isolated station");
-   for(var n:ns){check(!n.equals(at)&&StationGraph.neighbours(n.x(),n.z()).contains(at),"non reciprocal edge");if(Math.abs(n.x())<=9&&Math.abs(n.z())<=9&&!seen.contains(n))queue.add(n);}}
-  int expected=0;for(int x=-9;x<=9;x++)for(int z=-9;z<=9;z++)if(StationGraph.exists(x,z))expected++;
-  check(seen.size()==expected,"isolated local component");int routes=0,cells=0,chunks=0,spirals=0;
-  for(long seed:new long[]{0,7,619015,Long.MIN_VALUE})for(int x=-3;x<=3;x++)for(int z=-3;z<=3;z++)for(boolean ns:new boolean[]{false,true}){
-   if(ns?Math.floorMod(x,3)!=0:Math.floorMod(z,3)!=0)continue;
-   var a=StationGraph.railNode(seed,x,z,ns);var b=StationGraph.railNode(seed,x+(ns?0:1),z+(ns?1:0),ns);var route=NetworkPlan.connection(seed,x,z,ns);var points=route.points();
-   check(points.get(0).y()==a.y()&&points.get(points.size()-1).y()==b.y(),"wrong station height");
-   if(Math.abs(b.y()-a.y())<48)for(int i=1;i<points.size();i++)check((ns?points.get(i).z()-points.get(i-1).z():points.get(i).x()-points.get(i-1).x())>=-1e-8,"local return loop");
-   for(int end=0;end<2;end++){
-    var n=end==0?a:b;var hall=NetworkPlan.forChunk(seed,Math.floorDiv(n.x(),16)*16,Math.floorDiv(n.z(),16)*16).stations().stream().filter(s->s.node().equals(n)&&s.northSouth()==ns).findFirst().orElseThrow();
-    var port=points.get(end==0?0:points.size()-1);int sign=end==0?1:-1;
-    check(port.x()==n.x()+(ns?0:sign*NetworkPlan.halfLength(hall.kind()))&&port.z()==n.z()+(ns?sign*NetworkPlan.halfLength(hall.kind()):0),"route misses station doorway");
+  int blocked=0,free=0,stations=0,edges=0,rails=0,spirals=0,diagonal=0;
+  for(long seed:new long[]{7,619015}){
+   for(int x=-4096;x<4096;x+=64)for(int z=-4096;z<4096;z+=64){if(ExclusionNoise.blocked(seed,x,-40,z))blocked++;else free++;}
+   for(int rx=-1;rx<=0;rx++)for(int rz=-1;rz<=0;rz++){
+    var vs=StationGraph.vertices(seed,rx,rz);check(vs.equals(StationGraph.vertices(seed,rx,rz)),"non-deterministic placement");
+    for(var v:vs){stations++;check(ExclusionNoise.stationClear(seed,v.node().x(),v.node().y(),v.node().z()),"station in forbidden region");for(var w:vs)if(!v.equals(w))check(Math.hypot(v.node().x()-w.node().x(),v.node().z()-w.node().z())>=600,"stations too close");}
    }
-   boolean reverses=false;for(int i=1;i<points.size();i++)if((ns?points.get(i).z()-points.get(i-1).z():points.get(i).x()-points.get(i-1).x())<-1e-8)reverses=true;
-   if(reverses){spirals++;check(Math.abs(b.y()-a.y())>=48,"unnecessary local coil");}
-   var occupied=new HashSet<String>();var checkedChunks=new HashSet<String>();
-   for(var track:NetworkPlan.trackRoutes(seed,x,z,ns))for(var lane:(track.singleTrack()?RailPlan.ofSingle(track.route()):RailPlan.of(track.route())).lanes()){
-    for(int end=0;end<2;end++){
-     var n=end==0?a:b;var cell=lane.get(end==0?0:lane.size()-1);int gap=3+NetworkPlan.trackOffset(seed,x+(end==1&&!ns?1:0),z+(end==1&&ns?1:0),ns);
-     check((ns?Math.abs(cell.x()-n.x()):Math.abs(cell.z()-n.z()))==gap,"lane misses station layout");
-    }
-    check(lane.get(0).floor()==a.y()&&lane.get(lane.size()-1).floor()==b.y(),"rails miss station port height");
-    for(int i=0;i<lane.size();i++){
-     var c=lane.get(i);cells++;check(occupied.add(c.x()+","+c.floor()+","+c.z()),"overlapping lane");
-     if(i>0){var prev=lane.get(i-1);check(Math.abs(c.x()-prev.x())+Math.abs(c.z()-prev.z())==1,"rail gap");check(Math.abs(c.floor()-prev.floor())<=1,"rail height jump");if(c.floor()!=prev.floor())check((c.floor()<prev.floor()?c:prev).shape().startsWith("ascending_"),"slope on curve");}
-     int sx=Math.floorDiv(c.x(),16)*16,sz=Math.floorDiv(c.z(),16)*16;
-     if(checkedChunks.add(sx+","+sz)){chunks++;check(NetworkPlan.forChunk(seed,sx,sz).paths().stream().anyMatch(p->p.route().points().equals(track.route().points())),"route clipped at chunk border "+sx+","+sz);}
+   for(int erx=-1;erx<=1;erx++)for(int erz=-1;erz<=1;erz++)for(var e:StationGraph.edges(seed,erx,erz)){
+    edges++;boolean ns=e.northSouth();var a=StationGraph.railNode(e.a(),ns);var b=StationGraph.railNode(e.b(),ns);
+    check(e.a().traffic()==StationGraph.Traffic.MIXED||e.b().traffic()==StationGraph.Traffic.MIXED||e.a().traffic()==e.b().traffic(),"cargo/passenger interchange without mixed station");
+    var main=NoiseRouter.connect(seed,e.a(),e.b());check(main!=null&&ExclusionNoise.routeClear(seed,main,26),"route cuts forbidden noise");
+    boolean reverses=false;for(int i=1;i<main.points().size();i++){var p=main.points().get(i-1);var q=main.points().get(i);if(Math.abs(q.x()-p.x())>.01&&Math.abs(q.z()-p.z())>.01)diagonal++;if((ns?q.z()-p.z():q.x()-p.x())<-.01)reverses=true;}
+    if(reverses&&Math.abs(a.y()-b.y())>=32)spirals++;
+    var laneOccupancy=new HashSet<String>();
+    for(var track:NetworkPlan.trackRoutes(seed,e)){
+     check(ExclusionNoise.routeClear(seed,track.route(),12),"split branch enters noise");
+     for(var lane:(track.singleTrack()?RailPlan.ofSingle(track.route()):RailPlan.of(track.route())).lanes()){
+      check(lane.get(0).floor()==a.y()&&lane.get(lane.size()-1).floor()==b.y(),"wrong throat elevation");
+      var occupied=new HashSet<String>();
+      for(int i=0;i<lane.size();i++){var c=lane.get(i);rails++;check(occupied.add(c.x()+","+c.floor()+","+c.z()),"rail self-overlap seed="+seed+" edge="+e+" cell="+c);check(laneOccupancy.add(c.x()+","+c.floor()+","+c.z()),"opposite lanes overlap "+e);if(i%256==0){int cx=Math.floorDiv(c.x(),16)*16,cz=Math.floorDiv(c.z(),16)*16;check(NetworkPlan.forChunk(seed,cx,cz).paths().stream().anyMatch(p->p.route().points().equals(track.route().points())),"chunk route ownership missing");}if(i>0){var prev=lane.get(i-1);check(Math.abs(c.x()-prev.x())+Math.abs(c.z()-prev.z())==1,"rail gap");check(Math.abs(c.floor()-prev.floor())<=1,"rail height jump");}}
+      for(int end:new int[]{0,1}){var v=end==0?e.a():e.b();var s=NetworkPlan.station(seed,v,ns);var cell=lane.get(end==0?0:lane.size()-1);check((ns?Math.abs(cell.x()-s.node().x()):Math.abs(cell.z()-s.node().z()))==3+s.trackOffset(),"wrong platform rail position");}
+     }
     }
    }
-   routes++;
-  }
-  check(spirals>0,"spirals absent from new planner");
-  int located=0;
-  for(long seed:new long[]{0,7,619015,Long.MIN_VALUE})for(int px:new int[]{-4097,0,2000})for(int pz:new int[]{-1000,0,3001}){
-   var found=NetworkPlan.nearestBiocenter(seed,px,pz);check(found!=null,"biocenter missing");
-   double distance=Math.hypot(found.x()-px,found.z()-pz);
-   for(int x=-24;x<=24;x++)for(int z=-24;z<=24;z+=3){
-    if(StationGraph.anchor(x,z))continue;var n=StationGraph.node(seed,x,z);
-    if(NetworkPlan.stationKind(n,NetworkPlan.hash(seed,x,z,29))==NetworkPlan.StationKind.BIOCENTER)check(Math.hypot(n.x()-px,n.z()-pz)>=distance-1e-8,"locator returned farther biocenter");
+   check(NetworkPlan.nearestSpiral(seed,0,0)!=null,"spiral locator finds no real coil");
+   for(String type:new String[]{"station","passenger","mini","interchange","terminal","freight","mixed","biocenter","aquarium"}){
+    var match=NetworkPlan.nearestStation(seed,0,0,type);check(match!=null,"no station type "+type);var n=match.node();var plan=NetworkPlan.forChunk(seed,Math.floorDiv(n.x(),16)*16,Math.floorDiv(n.z(),16)*16);check(plan.stations().stream().anyMatch(s->s.node().equals(n)&&s.kind()==match.kind()&&s.northSouth()==match.northSouth()),"locator disagrees with rendering");
    }
-   var halls=NetworkPlan.forChunk(seed,Math.floorDiv(found.x(),16)*16,Math.floorDiv(found.z(),16)*16).stations();
-   check(halls.stream().anyMatch(s->s.node().equals(found)&&s.kind()==NetworkPlan.StationKind.BIOCENTER),"locator disagrees with generated station");located++;
   }
-  int searches=0;
-  for(long seed:new long[]{7,619015})for(String type:new String[]{"station","passenger","mini","interchange","terminal","freight","biocenter"})for(int px:new int[]{-2000,0,2000}){
-   var found=NetworkPlan.nearestStation(seed,px,1700,type);check(found!=null,"missing station type "+type);
-   var n=found.node();var halls=NetworkPlan.forChunk(seed,Math.floorDiv(n.x(),16)*16,Math.floorDiv(n.z(),16)*16).stations();
-   check(halls.stream().anyMatch(h->h.node().equals(n)&&h.northSouth()==found.northSouth()&&h.kind()==found.kind()),"locator mismatch "+type);
-   check(type.equals("station")||type.equals("interchange")&&found.interchange()||found.kind().name().equals(type.toUpperCase(java.util.Locale.ROOT))||type.equals("passenger")&&found.kind()==NetworkPlan.StationKind.PASSENGER,"wrong station type "+type);searches++;
-  }
-  System.out.println("PASS: "+searches+" station-type searches");
-  System.out.println("PASS: "+spirals+" spiral connections; "+located+" nearest biocenter searches checked against regional candidates");
-  System.out.println("PASS: connected "+expected+"-station graph; "+routes+" station connections, "+cells+" rails, "+chunks+" chunk ownership checks");
+  check(blocked>1000&&free>1000,"noise has no occupied/free areas");check(stations>20&&edges>0&&diagonal>100,"random topology absent");
+  System.out.println("PASS: noise "+blocked+" forbidden / "+free+" free samples; "+stations+" random candidates; "+edges+" routed edges, "+rails+" rails, "+spirals+" large-rise routes; themed branch compatibility and locators");
  }
 }

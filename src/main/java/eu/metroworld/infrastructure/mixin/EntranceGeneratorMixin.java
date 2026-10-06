@@ -57,16 +57,25 @@ public abstract class EntranceGeneratorMixin {
  }
  private void metroWorld$plannedEntrance(StructureWorldAccess world,Chunk chunk){
   int cx=chunk.getPos().getStartX()+8,cz=chunk.getPos().getStartZ()+8;
-  var anchor=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(world.getSeed(),cx*8.0,cz*8.0);
+  NetworkPlan.Node anchor;
+  try{anchor=eu.metroworld.infrastructure.world.StationGraph.nearestPortal(world.getSeed(),cx*8.0,cz*8.0);}
+  catch(IllegalStateException unavailable){return;}
   int x=Math.floorDiv(Math.floorDiv(anchor.x(),8),16)*16+8,z=Math.floorDiv(Math.floorDiv(anchor.z(),8),16)*16+8;
   if(Math.floorDiv(x,16)!=chunk.getPos().x||Math.floorDiv(z,16)!=chunk.getPos().z)return;
-  int y=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,x,z);
-  if(y<world.getSeaLevel()||y>world.getTopY()-7)return;
-  for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
-   int top=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,x+dx,z+dz);
-   if(Math.abs(top-y)>1||!world.getFluidState(new BlockPos(x+dx,top-1,z+dz)).isEmpty())return;
-   for(int h=0;h<4;h++)if(!world.getBlockState(new BlockPos(x+dx,y+h,z+dz)).isReplaceable())return;
+  int y=Integer.MIN_VALUE;
+  // Try several clear sites inside the owning chunk instead of losing an entrance to one uneven column.
+  search: for(int[] offset:new int[][]{{0,0},{-4,0},{4,0},{0,-4},{0,4},{-4,-4},{4,4},{-4,4},{4,-4}}){
+   int tx=x+offset[0],tz=z+offset[1],ty=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,tx,tz);
+   if(ty<=world.getBottomY()+4||ty>world.getTopY()-7)continue;
+   for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+    int top=world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,tx+dx,tz+dz);
+    BlockPos floor=new BlockPos(tx+dx,top-1,tz+dz);
+    if(Math.abs(top-ty)>1||!world.getFluidState(floor).isEmpty()||!world.getBlockState(floor).isSolidBlock(world,floor))continue search;
+    for(int h=0;h<4;h++)if(!world.getBlockState(new BlockPos(tx+dx,ty+h,tz+dz)).isReplaceable())continue search;
+   }
+   x=tx;z=tz;y=ty;break;
   }
+  if(y==Integer.MIN_VALUE)return;
   for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
    world.setBlockState(new BlockPos(x+dx,y-1,z+dz),Blocks.SMOOTH_QUARTZ.getDefaultState(),2);
    world.setBlockState(new BlockPos(x+dx,y+3,z+dz),Blocks.WHITE_CONCRETE.getDefaultState(),2);

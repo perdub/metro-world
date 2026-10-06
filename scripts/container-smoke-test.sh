@@ -32,7 +32,7 @@ docker exec "$name" test -f /data/mods/metro-world.jar
 for mod in fabric-api lithium ferritecore krypton; do
   docker exec "$name" sh -c "ls /data/mods/${mod}*.jar" >/dev/null
 done
-# Check the loaded custom dimension, then generate central station chunks.
+# Check the loaded custom dimension and generation; stations no longer sit at the origin.
 output=$(docker exec "$name" rcon-cli 'execute in metro-world:metro-world run time query gametime')
 printf '%s\n' "$output" | tee build/container-check/dimension.txt
 printf '%s\n' "$output" | grep -E 'The time is [0-9]+' >/dev/null
@@ -41,7 +41,10 @@ sleep 10
 output=$(docker exec "$name" rcon-cli 'metro-world validate-tracks')
 printf '%s\n' "$output" | tee build/container-check/tracks.txt
 printf '%s\n' "$output" | grep -F 'TRACKS_OK:' >/dev/null
-for type in station passenger mini interchange terminal freight biocenter; do
+output=$(docker exec "$name" rcon-cli 'metro-world validate-features')
+printf '%s\n' "$output" | tee build/container-check/features.txt
+printf '%s\n' "$output" | grep -F 'FEATURES_OK:' >/dev/null
+for type in station passenger mini interchange terminal freight mixed biocenter aquarium spiral; do
   output=$(docker exec "$name" rcon-cli "metro-world locate $type")
   printf '%s\n' "$output" >> build/container-check/locate.txt
   printf '%s\n' "$output" | grep -F '/execute in metro-world:metro-world run tp @s' >/dev/null

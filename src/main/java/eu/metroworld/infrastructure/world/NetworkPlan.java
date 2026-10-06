@@ -2,14 +2,14 @@ package eu.metroworld.infrastructure.world;
 import java.util.*;
 /** Immutable spatial plan. Stations own explicit ports; routes never start inside platforms. */
 public final class NetworkPlan {
- public enum StationKind { PASSENGER, MINI, TERMINAL, INTERCHANGE, FREIGHT, BIOCENTER }
+ public enum StationKind { PASSENGER, MINI, TERMINAL, INTERCHANGE, MIXED, FREIGHT, BIOCENTER }
  public static StationKind stationKind(Node n,long salt){
-  if(n.x==0&&n.z==0)return StationKind.INTERCHANGE;
+  
   int roll=Math.floorMod((int)(salt>>>12),10);return roll<2?StationKind.MINI:roll==2?StationKind.TERMINAL:roll<5?StationKind.FREIGHT:roll<7?StationKind.BIOCENTER:StationKind.PASSENGER;
  }
  public enum TrackLayout { CENTRAL, ISLAND }
  public enum Condition { INTACT, COLLAPSED, CHEMICAL, QUARANTINE }
- public static final int SPACING=512,SHELL=6;
+ public static final int SHELL=6;
  public record Node(int x,int z,int y){}
  public static int halfLength(StationKind kind){return kind==StationKind.MINI?28:kind==StationKind.TERMINAL?54:40;}
  public static int halfWidth(StationKind kind){return kind==StationKind.MINI?12:kind==StationKind.TERMINAL?22:17;}
@@ -18,12 +18,15 @@ public final class NetworkPlan {
   public Station(Node node,long salt,Condition condition){this(node,salt,condition,false,false,false,stationKind(node,salt),TrackLayout.CENTRAL,0);}
   public Station(Node node,long salt,Condition condition,boolean interchange){this(node,salt,condition,interchange,false,false,stationKind(node,salt),TrackLayout.CENTRAL,0);}
   public boolean intersects(int x,int z,int margin){
-   int length=halfLength(kind),north=kind==StationKind.BIOCENTER?96:halfWidth(kind),south=halfWidth(kind)+16;
-   return northSouth?node.x+north+margin>=x&&node.x-south-margin<=x+15&&node.z+length+margin>=z&&node.z-length-margin<=z+15:
-    node.x+length+margin>=x&&node.x-length-margin<=x+15&&node.z+south+margin>=z&&node.z-north-margin<=z+15;
+   int length=halfLength(kind),minX=-length,maxX=length,minZ=-halfWidth(kind),maxZ=halfWidth(kind)+16;
+   if(kind==StationKind.BIOCENTER){minZ=-62-DomeDesign.spec(salt).outerRadius();maxX=Math.max(maxX,82);}
+   if(SideBranchDesign.present(salt)){var spec=SideBranchDesign.select(salt,length);minX=Math.min(minX,SideBranchDesign.minX(spec));maxZ=Math.max(maxZ,SideBranchDesign.maxZ(spec));}
+   return northSouth?node.x-minZ+margin>=x&&node.x-maxZ-margin<=x+15&&node.z+maxX+margin>=z&&node.z+minX-margin<=z+15:
+    node.x+maxX+margin>=x&&node.x+minX-margin<=x+15&&node.z+maxZ+margin>=z&&node.z+minZ-margin<=z+15;
   }
  }
- public record Path(TransitGeometry.Route route,Condition condition,long salt,boolean service,boolean transfer,boolean singleTrack){
+ public record Path(TransitGeometry.Route route,Condition condition,long salt,boolean service,boolean transfer,boolean singleTrack,boolean freight){
+  public Path(TransitGeometry.Route route,Condition condition,long salt,boolean service,boolean transfer,boolean singleTrack){this(route,condition,salt,service,transfer,singleTrack,false);}
   public Path(TransitGeometry.Route route,Condition condition,long salt,boolean service){this(route,condition,salt,service,false,false);}
   public Path(TransitGeometry.Route route,Condition condition,long salt,boolean service,boolean transfer){this(route,condition,salt,service,transfer,false);}
  }
@@ -36,103 +39,90 @@ public final class NetworkPlan {
  }
  public record ChunkPlan(List<Station> stations,List<Path> paths,List<Room> rooms,List<StairTower> stairs){}
  public static long hash(long seed,int a,int b,int level){long n=seed^(a*341873128712L)^(b*132897987541L)^(level*42317861L);n=(n^(n>>>30))*0xbf58476d1ce4e5b9L;n=(n^(n>>>27))*0x94d049bb133111ebL;return n^(n>>>31);}
- public static Node node(long seed,int gx,int gz){return StationGraph.node(seed,gx,gz);}
  public static Condition condition(long seed,int gx,int gz,int salt){
-  int v=(int)Math.floorMod(hash(seed,gx,gz,salt),100);
-  return v<70?Condition.INTACT:v<84?Condition.COLLAPSED:v<92?Condition.CHEMICAL:Condition.QUARANTINE;
+  int v=(int)Math.floorMod(hash(seed,gx,gz,salt),100);return v<70?Condition.INTACT:v<84?Condition.COLLAPSED:v<92?Condition.CHEMICAL:Condition.QUARANTINE;
  }
  private static TransitGeometry.Point point(Node n){return new TransitGeometry.Point(n.x,n.y,n.z);}
  private static void addPath(List<Path> out,TransitGeometry.Route route,Condition c,long h,boolean service,int sx,int sz){if(route.intersects(sx,sz,SHELL+(service?3:6)))out.add(new Path(route,c,h,service));}
- private record RouteKey(long seed,int x,int z,boolean northSouth){}
- private static final Map<RouteKey,TransitGeometry.Route> ROUTES=new LinkedHashMap<>(128,.75f,true){
-  @Override protected boolean removeEldestEntry(Map.Entry<RouteKey,TransitGeometry.Route> entry){return size()>128;}
- };
- public static int trackOffset(long seed,int x,int z,boolean ns){
-  if(StationGraph.anchor(x,z))return 0;
-  long h=hash(seed,x,z,ns?217:216);return Math.floorMod(h,3)==0?4:0;
+ private static boolean[] halls(long seed,StationGraph.Vertex v){boolean ew=v.portal(),ns=false;for(var e:StationGraph.incident(seed,v)){if(e.northSouth())ns=true;else ew=true;}return new boolean[]{ew,ns};}
+ public static Station station(long seed,StationGraph.Vertex v,boolean ns){
+  var flags=halls(seed,v);boolean transfer=flags[0]&&flags[1];var n=StationGraph.railNode(v,ns);long h=v.salt();
+  StationKind k=v.traffic()==StationGraph.Traffic.FREIGHT?StationKind.FREIGHT:v.traffic()==StationGraph.Traffic.MIXED?StationKind.MIXED:stationKind(n,h);
+  if(k==StationKind.FREIGHT)k=StationKind.PASSENGER; // Pure passenger candidates cannot become cargo stops by decoration roll.
+  if(v.traffic()==StationGraph.Traffic.FREIGHT)k=StationKind.FREIGHT;
+  if(ns&&k==StationKind.BIOCENTER)k=StationKind.PASSENGER;
+  int offset=transfer?0:Math.floorMod(h,3)==0?4:0;
+  return new Station(n,h,condition(seed,n.x,n.z,41),transfer,ns,v.portal()&&!ns,k,offset==0?TrackLayout.CENTRAL:TrackLayout.ISLAND,offset);
  }
- public static TrackLayout trackLayout(long seed,int x,int z,boolean ns){return trackOffset(seed,x,z,ns)==0?TrackLayout.CENTRAL:TrackLayout.ISLAND;}
- private static Node trackNode(long seed,int x,int z,boolean ns){return StationGraph.railNode(seed,x,z,ns);}
-
- private static StationKind kind(long seed,int x,int z,boolean ns){
-  long h=hash(seed,x,z,29);if(StationGraph.anchor(x,z))return ns?StationKind.INTERCHANGE:Math.floorMod(h,3)==0?StationKind.TERMINAL:StationKind.INTERCHANGE;
-  StationKind k=stationKind(node(seed,x,z),h);return ns&&k==StationKind.BIOCENTER?StationKind.PASSENGER:k;
- }
- public static TransitGeometry.Route connection(long seed,int x,int z,boolean ns){
-  synchronized(ROUTES){return ROUTES.computeIfAbsent(new RouteKey(seed,x,z,ns),key->{
-   var a=trackNode(seed,x,z,ns);var b=trackNode(seed,x+(ns?0:1),z+(ns?1:0),ns);
-   return TransitGeometry.spiralConnection(point(a),point(b),ns,halfLength(kind(seed,x,z,ns)),halfLength(kind(seed,x+(ns?0:1),z+(ns?1:0),ns)));
+ private record RouteKey(long seed,StationGraph.Id a,StationGraph.Id b){}
+ private static final Map<RouteKey,List<TrackRoute>> TRACK_ROUTES=new LinkedHashMap<>(128,.75f,true){protected boolean removeEldestEntry(Map.Entry<RouteKey,List<TrackRoute>> e){return size()>128;}};
+ public static List<TrackRoute> trackRoutes(long seed,StationGraph.Edge edge){
+  synchronized(TRACK_ROUTES){return TRACK_ROUTES.computeIfAbsent(new RouteKey(seed,edge.a().id(),edge.b().id()),key->{
+   var main=NoiseRouter.connect(seed,edge.a(),edge.b());if(main==null)return List.of();
+   boolean ns=edge.northSouth();var sa=station(seed,edge.a(),ns);var sb=station(seed,edge.b(),ns);var a=sa.node();var b=sb.node();
+   // Fill from the actual station port to the conservative routing reservation (54 blocks).
+   var points=new ArrayList<TransitGeometry.Point>();points.add(new TransitGeometry.Point(a.x+(ns?0:halfLength(sa.kind())),a.y,a.z+(ns?halfLength(sa.kind()):0)));
+   points.addAll(main.points());points.add(new TransitGeometry.Point(b.x-(ns?0:halfLength(sb.kind())),b.y,b.z-(ns?halfLength(sb.kind()):0)));main=new TransitGeometry.Route(points);
+   boolean split=Math.abs(a.y-b.y)<48&&Math.floorMod(edge.salt(),5)==0;int startGap=3+sa.trackOffset(),endGap=3+sb.trackOffset();
+   if(split||startGap!=3||endGap!=3){var branches=TransitGeometry.splitMerge(main,startGap,endGap,split);return List.of(new TrackRoute(branches.get(0),true,edge.salt()),new TrackRoute(branches.get(1),true,edge.salt()^71));}
+   return List.of(new TrackRoute(main,false,edge.salt()));
   });}
- }
- private static final Map<RouteKey,List<TrackRoute>> TRACK_ROUTES=new LinkedHashMap<>(128,.75f,true){
-  @Override protected boolean removeEldestEntry(Map.Entry<RouteKey,List<TrackRoute>> e){return size()>128;}
- };
- public static List<TrackRoute> trackRoutes(long seed,int x,int z,boolean ns){synchronized(TRACK_ROUTES){return TRACK_ROUTES.computeIfAbsent(new RouteKey(seed,x,z,ns),key->buildTrackRoutes(seed,x,z,ns));}}
- private static List<TrackRoute> buildTrackRoutes(long seed,int x,int z,boolean ns){
-  var main=connection(seed,x,z,ns);var a=trackNode(seed,x,z,ns);var b=trackNode(seed,x+(ns?0:1),z+(ns?1:0),ns);
-  boolean split=Math.abs(a.y()-b.y())<48&&Math.floorMod(hash(seed,x,z,309),5)==0;
-  int startGap=3+trackOffset(seed,x,z,ns),endGap=3+trackOffset(seed,x+(ns?0:1),z+(ns?1:0),ns);
-  if(split||startGap!=3||endGap!=3){
-   var branches=TransitGeometry.splitMerge(main,startGap,endGap,split);return List.of(new TrackRoute(branches.get(0),true,hash(seed,x,z,310)),new TrackRoute(branches.get(1),true,hash(seed,x,z,311)));
-  }
-  return List.of(new TrackRoute(main,false,hash(seed,x,z,ns?81:80)));
  }
  public record StationMatch(Node node,StationKind kind,boolean northSouth,boolean interchange){}
  public static StationMatch nearestStation(long seed,double x,double z,String requested){
-  int gx=(int)Math.floor(x/SPACING),gz=(int)Math.floor(z/SPACING);StationMatch best=null;double distance=Double.POSITIVE_INFINITY;
-  for(int radius=0;radius<=96;radius++){
-   for(int ix=gx-radius;ix<=gx+radius;ix++)for(int iz=gz-radius;iz<=gz+radius;iz++){
-    if(radius>0&&Math.abs(ix-gx)!=radius&&Math.abs(iz-gz)!=radius)continue;
-    if(!StationGraph.exists(ix,iz))continue;boolean anchor=StationGraph.anchor(ix,iz);
-    for(boolean ns:new boolean[]{false,true}){
-     if(ns?Math.floorMod(ix,3)!=0:Math.floorMod(iz,3)!=0)continue;
-     StationKind k=kind(seed,ix,iz,ns);boolean transfer=anchor;
-     boolean matches=requested.equals("station")||requested.equals("interchange")&&transfer||requested.equals("passenger")&&k==StationKind.PASSENGER||requested.equals("mini")&&k==StationKind.MINI||requested.equals("terminal")&&k==StationKind.TERMINAL||requested.equals("freight")&&k==StationKind.FREIGHT||requested.equals("biocenter")&&k==StationKind.BIOCENTER;
-     if(!matches)continue;Node n=StationGraph.railNode(seed,ix,iz,ns);double d=Math.hypot(n.x()-x,n.z()-z);if(d<distance){distance=d;best=new StationMatch(n,k,ns,transfer);}
+  int rx=(int)Math.floor(x/StationGraph.REGION),rz=(int)Math.floor(z/StationGraph.REGION);StationMatch best=null;double distance=Double.POSITIVE_INFINITY;
+  for(int radius=0;radius<=8;radius++){
+   for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
+    if(radius>0&&Math.abs(dx)!=radius&&Math.abs(dz)!=radius)continue;
+    for(var v:StationGraph.vertices(seed,rx+dx,rz+dz)){if(StationGraph.incident(seed,v).isEmpty())continue;var flags=halls(seed,v);
+     for(boolean ns:new boolean[]{false,true}){if(!flags[ns?1:0])continue;var s=station(seed,v,ns);var k=s.kind();
+      boolean matches=requested.equals("station")||requested.equals("interchange")&&(s.interchange()||(k==StationKind.INTERCHANGE||k==StationKind.MIXED))||requested.equals(k.name().toLowerCase(Locale.ROOT))||requested.equals("aquarium")&&k==StationKind.BIOCENTER&&DomeDesign.spec(s.salt()).kind()==DomeDesign.Kind.AQUA;
+      if(!matches)continue;double d=Math.hypot(s.node().x-x,s.node().z-z);if(d<distance){distance=d;best=new StationMatch(s.node(),k,ns,s.interchange());}
+     }
     }
    }
-   if(best!=null&&radius*SPACING-128>distance)return best;
-  }
-  return best;
+   if(best!=null&&radius*StationGraph.REGION>distance)return best;
+  }return best;
  }
- public static Node nearestBiocenter(long seed,double x,double z){
-  Node best=null;double distance=Double.POSITIVE_INFINITY;
-  int gx=(int)Math.floor(x/SPACING),gz=(int)Math.floor(z/SPACING);
-  // Once the unvisited exterior cannot beat the best result, the nearest is proven.
-  for(int radius=0;radius<=96;radius++){
-   for(int ix=gx-radius;ix<=gx+radius;ix++)for(int iz=gz-radius;iz<=gz+radius;iz++){
-    if(radius>0&&Math.abs(ix-gx)!=radius&&Math.abs(iz-gz)!=radius)continue;
-    if(Math.floorMod(iz,3)!=0||StationGraph.anchor(ix,iz)||kind(seed,ix,iz,false)!=StationKind.BIOCENTER)continue;
-    Node n=node(seed,ix,iz);double d=Math.hypot(n.x()-x,n.z()-z);if(d<distance){distance=d;best=n;}
+ public static Node nearestBiocenter(long seed,double x,double z){var s=nearestStation(seed,x,z,"biocenter");return s==null?null:s.node();}
+ public static TransitGeometry.Point spiralEntry(long seed,StationGraph.Edge edge){
+  var a=StationGraph.railNode(edge.a(),edge.northSouth());var b=StationGraph.railNode(edge.b(),edge.northSouth());
+  double span=edge.northSouth()?b.z-a.z:b.x-a.x;if(Math.abs(a.y-b.y)<32||span-108<320)return null;
+  TransitGeometry.Route direct;try{direct=TransitGeometry.spiralConnection(point(a),point(b),edge.northSouth(),54,54);}catch(IllegalArgumentException e){return null;}
+  var route=NoiseRouter.connect(seed,edge.a(),edge.b());if(route==null||!route.points().equals(direct.points()))return null;
+  return edge.northSouth()?new TransitGeometry.Point(a.x-156,a.y,a.z+246):new TransitGeometry.Point(a.x+246,a.y,a.z+96);
+ }
+ public static TransitGeometry.Point nearestSpiral(long seed,double x,double z){
+  int rx=(int)Math.floor(x/StationGraph.REGION),rz=(int)Math.floor(z/StationGraph.REGION);TransitGeometry.Point best=null;double distance=Double.POSITIVE_INFINITY;
+  for(int radius=0;radius<=5;radius++){
+   for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++)if(radius==0||Math.abs(dx)==radius||Math.abs(dz)==radius)for(var edge:StationGraph.edges(seed,rx+dx,rz+dz)){
+    var entrance=spiralEntry(seed,edge);if(entrance==null)continue;
+    double d=Math.hypot(entrance.x()-x,entrance.z()-z);if(d<distance){distance=d;best=entrance;}
    }
-   if(best!=null&&radius*SPACING-64>distance)return best;
-  }
-  return best;
+   // Coil entry may be 292 blocks away from its containing region.
+   if(best!=null&&(radius-1)*StationGraph.REGION-320>distance)return best;
+  }return best;
  }
  public static ChunkPlan forChunk(long seed,int sx,int sz){
-  var stations=new ArrayList<Station>();var paths=new ArrayList<Path>();var rooms=new ArrayList<Room>();var stairs=new ArrayList<StairTower>();
-  int gx=Math.floorDiv(sx,SPACING),gz=Math.floorDiv(sz,SPACING);
-  for(int ix=gx-2;ix<=gx+2;ix++)for(int iz=gz-2;iz<=gz+2;iz++){
-   if(!StationGraph.exists(ix,iz))continue;
-   long h=hash(seed,ix,iz,29);Condition damage=ix==0&&iz==0?Condition.INTACT:condition(seed,ix,iz,41);
-   boolean portal=StationGraph.anchor(ix,iz),horizontal=Math.floorMod(iz,3)==0,vertical=Math.floorMod(ix,3)==0;
-   for(boolean ns:new boolean[]{false,true}){
-    if(ns?!vertical:!horizontal)continue;
-    Node n=StationGraph.railNode(seed,ix,iz,ns);Station station=new Station(n,h,damage,portal,ns,portal&&!ns,kind(seed,ix,iz,ns),trackLayout(seed,ix,iz,ns),trackOffset(seed,ix,iz,ns));
-    if(station.intersects(sx,sz,SHELL))stations.add(station);
-    for(var route:trackRoutes(seed,ix,iz,ns))if(route.route().intersects(sx,sz,SHELL+6))paths.add(new Path(route.route(),damage,route.salt(),false,false,route.singleTrack()));
-   }
-   Node a=node(seed,ix,iz);
-   if(portal){
-    int bottom=a.y-24+2,top=a.y+2;StairTower tower=new StairTower(a.x+72,a.z+11,bottom,top,h);
-    if(tower.intersects(sx,sz,SHELL))stairs.add(tower);
-    int upperStart=halfLength(kind(seed,ix,iz,false))-6;
+  var stations=new ArrayList<Station>();var paths=new ArrayList<Path>();var rooms=new ArrayList<Room>();var stairs=new ArrayList<StairTower>();var candidates=new LinkedHashMap<StationGraph.Id,StationGraph.Vertex>();
+  for(var edge:StationGraph.nearbyEdges(seed,sx,sz)){
+   candidates.put(edge.a().id(),edge.a());candidates.put(edge.b().id(),edge.b());
+   // Cheap endpoint envelope avoids building rail lanes for distant edges.
+   var a=edge.a().node();var b=edge.b().node();if(sx<Math.min(a.x,b.x)-1100||sx>Math.max(a.x,b.x)+1100||sz<Math.min(a.z,b.z)-1100||sz>Math.max(a.z,b.z)+1100)continue;
+   for(var route:trackRoutes(seed,edge))if(route.route().intersects(sx,sz,SHELL+6))paths.add(new Path(route.route(),condition(seed,a.x,a.z,41),route.salt(),false,false,route.singleTrack(),edge.freight()));
+  }
+  for(var v:candidates.values()){
+   Node a=v.node();if(Math.abs(a.x-sx)>200||Math.abs(a.z-sz)>200)continue;
+   var flags=halls(seed,v);long h=v.salt();Condition damage=condition(seed,a.x,a.z,41);
+   for(boolean ns:new boolean[]{false,true})if(flags[ns?1:0]){var s=station(seed,v,ns);if(s.intersects(sx,sz,SHELL))stations.add(s);}
+   if(flags[0]&&flags[1]){
+    int bottom=a.y-24+2,top=a.y+2;StairTower tower=new StairTower(a.x+72,a.z+11,bottom,top,h);if(tower.intersects(sx,sz,SHELL))stairs.add(tower);
+    int upperStart=halfLength(station(seed,v,false).kind())-6;
     addPath(paths,new TransitGeometry.Route(List.of(new TransitGeometry.Point(a.x+upperStart,top,a.z+12),new TransitGeometry.Point(a.x+70,top,a.z+12))),Condition.INTACT,h,true,sx,sz);
     addPath(paths,new TransitGeometry.Route(List.of(new TransitGeometry.Point(a.x+14,bottom,a.z+12),new TransitGeometry.Point(a.x+70,bottom,a.z+12))),Condition.INTACT,h,true,sx,sz);
-   }else if(horizontal){
-    int serviceFloor=a.y+34,serviceZ=kind(seed,ix,iz,false)==StationKind.MINI?8:12;StairTower tower=new StairTower(a.x+66,a.z+serviceZ-1,a.y+2,serviceFloor,h);
-    if(tower.intersects(sx,sz,SHELL))stairs.add(tower);
-    int start=halfLength(kind(seed,ix,iz,false))-6;
+   }else if(flags[0]){
+    int serviceFloor=a.y+34,serviceZ=station(seed,v,false).kind()==StationKind.MINI?8:12;StairTower tower=new StairTower(a.x+66,a.z+serviceZ-1,a.y+2,serviceFloor,h);if(tower.intersects(sx,sz,SHELL))stairs.add(tower);
+    int start=halfLength(station(seed,v,false).kind())-6;
     addPath(paths,new TransitGeometry.Route(List.of(new TransitGeometry.Point(a.x+start,a.y+2,a.z+serviceZ),new TransitGeometry.Point(a.x+64,a.y+2,a.z+serviceZ))),Condition.INTACT,h,true,sx,sz);
     addPath(paths,new TransitGeometry.Route(List.of(new TransitGeometry.Point(a.x+64,serviceFloor,a.z+serviceZ),new TransitGeometry.Point(a.x+64,serviceFloor,a.z+66))),damage,h,true,sx,sz);
     Room cache=new Room(a.x+54,a.x+78,a.z+56,a.z+81,serviceFloor,8,damage,h);if(cache.intersects(sx,sz,SHELL))rooms.add(cache);

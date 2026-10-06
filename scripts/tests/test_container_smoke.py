@@ -27,7 +27,7 @@ case "$1" in
        printf 'online-mode=%s\r\nserver-port=25565\r\n' "${ONLINE_FIXTURE:-false}"
       else printf 'eula=true\r\n'; fi ;;
     rcon-cli)
-      if [[ "$4" == *'time query'* ]]; then echo 'The time is 42'; elif [[ "$4" == *'validate-tracks'* ]]; then echo 'TRACKS_OK: 1000 rails'; elif [[ "$4" == *'locate entrance'* ]]; then echo 'Overworld: [8, ~, 8]'; elif [[ "$4" == *'locate '* ]]; then echo '/execute in metro-world:metro-world run tp @s 2 3 8'; else echo 'OK'; fi ;;
+      if [[ "$4" == *'time query'* ]]; then echo 'The time is 42'; elif [[ "$4" == *'validate-features'* ]]; then echo 'FEATURES_OK: 100 checks'; elif [[ "$4" == *'validate-tracks'* ]]; then echo 'TRACKS_OK: 1000 rails'; elif [[ "$4" == *'locate entrance'* ]]; then echo 'Overworld: [8, ~, 8]'; elif [[ "$4" == *'locate '* ]]; then echo '/execute in metro-world:metro-world run tp @s 2 3 8'; else echo 'OK'; fi ;;
     *) exit 4 ;;
    esac ;;
  *) exit 5 ;;

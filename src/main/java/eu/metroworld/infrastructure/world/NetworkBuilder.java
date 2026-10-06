@@ -12,16 +12,26 @@ import net.minecraft.world.chunk.Chunk;
 public final class NetworkBuilder {
  private static final BlockState AIR=Blocks.AIR.getDefaultState();
  private static final class Canvas {
-  final Chunk chunk;final int sx,sz,bottom,height;final BlockState[] states;final byte[] priorities;final java.util.Map<BlockPos,String> signs=new java.util.HashMap<>();
+  final Chunk chunk;final int sx,sz,bottom,height;final BlockState[] states;final byte[] priorities;final java.util.Map<BlockPos,String> signs=new java.util.HashMap<>();final java.util.Map<BlockPos,String> loot=new java.util.HashMap<>();
   Canvas(Chunk chunk){this.chunk=chunk;sx=chunk.getPos().getStartX();sz=chunk.getPos().getStartZ();bottom=chunk.getBottomY();height=chunk.getHeight();states=new BlockState[height*256];priorities=new byte[states.length];}
   void put(int x,int y,int z,BlockState state,int priority){if(x<sx||x>sx+15||z<sz||z>sz+15||y<bottom||y>=bottom+height)return;int i=(y-bottom)*256+(z-sz)*16+x-sx;if(priority>=priorities[i]){states[i]=state;priorities[i]=(byte)priority;}}
   BlockState peek(int x,int y,int z){if(x<sx||x>sx+15||z<sz||z>sz+15||y<bottom||y>=bottom+height)return null;return states[(y-bottom)*256+(z-sz)*16+x-sx];}
   void box(int x1,int x2,int y1,int y2,int z1,int z2,BlockState state,int priority){for(int x=Math.max(sx,x1);x<=Math.min(sx+15,x2);x++)for(int z=Math.max(sz,z1);z<=Math.min(sz+15,z2);z++)for(int y=y1;y<=y2;y++)put(x,y,z,state,priority);}
   void flush(long seed){BlockPos.Mutable pos=new BlockPos.Mutable();for(int i=0;i<states.length;i++){BlockState state=states[i];if(state==null)continue;int x=sx+(i&15),z=sz+((i>>>4)&15),y=bottom+(i>>>8);chunk.setBlockState(pos.set(x,y,z),state,false);
-   if(state.isOf(Blocks.CHEST)){ChestBlockEntity chest=new ChestBlockEntity(pos.toImmutable(),state);chest.setLootTable(RegistryKey.of(RegistryKeys.LOOT_TABLE,Identifier.of("btr_infrastructure","chests/supplies")));chest.setLootTableSeed(NetworkPlan.hash(seed,x,z,y));chunk.setBlockEntity(chest);}
+   if(state.isOf(Blocks.CHEST)||state.isOf(Blocks.BARREL)){
+    LootableContainerBlockEntity container=state.isOf(Blocks.CHEST)?new ChestBlockEntity(pos.toImmutable(),state):new BarrelBlockEntity(pos.toImmutable(),state);
+    String table=loot.getOrDefault(pos.toImmutable(),"maintenance");
+    container.setLootTable(RegistryKey.of(RegistryKeys.LOOT_TABLE,Identifier.of("btr_infrastructure","chests/"+table)));
+    container.setLootTableSeed(NetworkPlan.hash(seed,x,z,y));chunk.setBlockEntity(container);
+   }
    if(state.isOf(Blocks.OAK_WALL_SIGN)){
     String name=signs.getOrDefault(pos.toImmutable(),"Метро");
-    SignText text=new SignText().withMessage(0,net.minecraft.text.Text.literal(name)).withMessage(1,net.minecraft.text.Text.literal("← Лифт / выход")).withMessage(2,net.minecraft.text.Text.literal("Переходы →")).withGlowing(true);
+    boolean secret=name.equals("Тайная остановка")||name.equals("Заброшенное депо")||name.equals("Техническая галерея");
+    boolean botanical=name.equals("Теплица")||name.equals("Банк семян")||name.equals("Биолаборатория")||name.equals("Заросший питомник");
+    boolean quarantine=name.equals("Карантинный блок");
+    SignText text=new SignText().withMessage(0,net.minecraft.text.Text.literal(name))
+     .withMessage(1,net.minecraft.text.Text.literal(quarantine?"Опасно: заражённые":secret?"Ветка закрыта":botanical?"Исследовательский сектор":"← Лифт / выход"))
+     .withMessage(2,net.minecraft.text.Text.literal(quarantine||secret?"Осмотрите хранилище":botanical?"Назад → станция":"Переходы →")).withGlowing(true);
     net.minecraft.nbt.NbtCompound data=new net.minecraft.nbt.NbtCompound();
     data.putString("id","minecraft:sign");data.putInt("x",x);data.putInt("y",y);data.putInt("z",z);
     data.put("front_text",SignText.CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE,text).getOrThrow());
@@ -52,14 +62,16 @@ public final class NetworkBuilder {
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=height+6;h++){
    int dx=s.northSouth()?z-n.z():x-n.x(),dz=s.northSouth()?n.x()-x:z-n.z();double edge=Math.min(Math.min(length-Math.abs(dx),width-Math.abs(dz)),Math.min(h,height-h));
    if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
-   BlockState state=StationDesign.sample(dx,h,dz,length,width,height,s.salt(),s.trackOffset());
-   if(kind==NetworkPlan.StationKind.FREIGHT)state=SpecialStations.freight(dx,h,dz,state);
+   BlockState state=StationDesign.sample(dx,h,dz,length,width,height,s.salt(),s.trackOffset(),kind==NetworkPlan.StationKind.FREIGHT||kind==NetworkPlan.StationKind.MIXED?StationVariant.LOGISTICS:StationVariant.select(s.salt(),length,width,height,s.trackOffset()));
+   if(kind==NetworkPlan.StationKind.FREIGHT||kind==NetworkPlan.StationKind.MIXED&&(s.northSouth()||dz<0))state=SpecialStations.freight(dx,h,dz,state);
+   state=StationDecay.decorate(dx,h,dz,length,width,height,s.salt(),s.condition(),s.trackOffset(),state);
    if(kind==NetworkPlan.StationKind.BIOCENTER&&Math.abs(dx)<=3&&dz<=-14&&h>=3&&h<=7)state=AIR;
    if(dx>=-12&&dx<=-6&&dz>=width-3&&h>=3&&h<=6)state=AIR;
    int serviceZ=kind==NetworkPlan.StationKind.MINI?8:12;
    if(!s.northSouth()&&dx>=length-6&&Math.abs(dz-serviceZ)<=2&&h>=3&&h<=6)state=AIR;
    // The lower transverse hall opens eastward to the shared public staircase.
    if(s.interchange()&&s.northSouth()&&Math.abs(dx-12)<=2&&dz<=-width+4&&h>=3&&h<=6)state=AIR;
+   if(state!=null&&(state.isOf(Blocks.CHEST)||state.isOf(Blocks.BARREL)))c.loot.put(new BlockPos(x,n.y()+h,z),stationLoot(kind));
    if(state!=null)c.put(x,n.y()+h,z,s.northSouth()?state.rotate(net.minecraft.util.BlockRotation.CLOCKWISE_90):state,state.isAir()?34:35);
   }
   // Every hall has a visible exit concourse, including intermediate stops.
@@ -71,39 +83,96 @@ public final class NetworkBuilder {
    BlockState state=h==2?Blocks.SMOOTH_QUARTZ.getDefaultState():h==8?Blocks.SEA_LANTERN.getDefaultState():wall?Blocks.WHITE_CONCRETE.getDefaultState():AIR;
    c.put(x,n.y()+h,z,state,state.isAir()?43:42);
   }
-  String name=s.interchange()?kind==NetworkPlan.StationKind.TERMINAL?"Вокзал / пересадка":"Пересадочная":switch(kind){case MINI->"Малая станция";case TERMINAL->"Вокзал";case FREIGHT->"Грузовой терминал";case BIOCENTER->"Биоцентр / купол";default->"Пассажирская";};
+  String name=kind==NetworkPlan.StationKind.MIXED?"Пассажирско-грузовая":s.interchange()?kind==NetworkPlan.StationKind.TERMINAL?"Вокзал / пересадка":"Пересадочная":switch(kind){case MINI->"Малая станция";case TERMINAL->"Вокзал";case FREIGHT->"Грузовой терминал";case BIOCENTER->"Биоцентр / купол";default->"Пассажирская";};
   BlockPos signPos=local(s,0,6,width-1);c.signs.put(signPos,name);
+  localPut(c,s,0,6,width,Blocks.SMOOTH_QUARTZ.getDefaultState(),50);
   localPut(c,s,0,6,width-1,Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.NORTH),50);
   localPut(c,s,2,2,8,Blocks.SMOOTH_QUARTZ.getDefaultState(),50);
   localPut(c,s,2,3,8,AIR,50);localPut(c,s,2,4,8,AIR,50);
   localPut(c,s,-10,3,width+8,InfrastructureBlocks.LIFT.getDefaultState(),50);
   localPut(c,s,-10,5,width+15,InfrastructureBlocks.WAYFINDING_SIGN.getDefaultState(),50);
-  localPut(c,s,length-16,3,width-3,Blocks.CHEST.getDefaultState(),40);
-  localPut(c,s,-length+16,3,-width+3,Blocks.CHEST.getDefaultState(),40);
-  if(kind==NetworkPlan.StationKind.BIOCENTER)biocenter(c,n);
+  stationChest(c,s,length-16,width-3,stationLoot(kind));
+  // An occasional station locker rewards exploration without putting rare loot in every crate.
+  stationChest(c,s,-length+16,-width+3,Math.floorMod(s.salt(),5)==0?"secure_locker":stationLoot(kind));
+  if(kind==NetworkPlan.StationKind.BIOCENTER){biocenter(c,s);botanical(c,s);}
+  if(SideBranchDesign.present(s.salt()))sideBranch(c,s);
  }
- private static void biocenter(Canvas c,NetworkPlan.Node n){
+ private static String stationLoot(NetworkPlan.StationKind kind){
+  return switch(kind){case FREIGHT,MIXED->"freight";case BIOCENTER->"biocenter";default->"passenger";};
+ }
+ private static void stationChest(Canvas c,NetworkPlan.Station s,int x,int z,String table){
+  localPut(c,s,x,2,z,Blocks.SMOOTH_QUARTZ.getDefaultState(),40);
+  localPut(c,s,x,3,z,Blocks.CHEST.getDefaultState(),40);
+  localPut(c,s,x,4,z,AIR,40);
+  c.loot.put(local(s,x,3,z),table);
+ }
+ private static void biocenter(Canvas c,NetworkPlan.Station s){
+  var n=s.node();var spec=DomeDesign.spec(s.salt());int radius=spec.outerRadius();
   // A separate garden dome south of the station's maintenance wing.
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++){
    int dx=x-n.x(),dz=z-(n.z()-62);
-   if(Math.abs(dx)<=34&&Math.abs(dz)<=34)for(int h=-6;h<=34;h++){
-    BlockState state=SpecialStations.garden(dx,h,dz);if(state!=null)c.put(x,n.y()+2+h,z,state,35);
+   if(Math.abs(dx)<=radius&&Math.abs(dz)<=radius)for(int h=-6;h<=radius;h++){
+    BlockState state=SpecialStations.garden(dx,h,dz,spec);if(state!=null)c.put(x,n.y()+2+h,z,state,35);
    }
    // Level pedestrian corridor meets the station platform and dome walkway.
-   if(Math.abs(dx)<=9&&z>=n.z()-40&&z<=n.z()-14)for(int h=-6;h<=14;h++){
+   if(Math.abs(dx)<=9&&z>=n.z()+spec.offsetZ()+spec.innerRadius()-5&&z<=n.z()-14)for(int h=-6;h<=14;h++){
     double edge=Math.min(3-Math.abs(dx),Math.min(h-2,8-h));
     if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
     BlockState state=h==2?Blocks.SMOOTH_QUARTZ.getDefaultState():h==8?Blocks.SEA_LANTERN.getDefaultState():Math.abs(dx)==3?Blocks.WHITE_CONCRETE.getDefaultState():AIR;
     c.put(x,n.y()+h,z,state,42);
    }
   }
+  int chestX=spec.innerRadius()-5;BlockPos chest=new BlockPos(n.x()+chestX,n.y()+3,n.z()-62);
+  c.put(chest.getX(),chest.getY()-1,chest.getZ(),Blocks.SMOOTH_QUARTZ.getDefaultState(),40);
+  c.put(chest.getX(),chest.getY(),chest.getZ(),Blocks.CHEST.getDefaultState(),40);
+  c.put(chest.getX(),chest.getY()+1,chest.getZ(),AIR,40);c.loot.put(chest,spec.kind()==DomeDesign.Kind.AQUA?"aquarium":"biocenter");
+ }
+ private static void botanical(Canvas c,NetworkPlan.Station s){
+  var n=s.node();var spec=BotanicalAnnex.spec(s.salt());String table=switch(spec.kind()){case SEED_BANK->"seed_bank";case LABORATORY->"botanical_lab";default->"biocenter";};
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int y=-3;y<=spec.height();y++){
+   int dx=x-n.x()-spec.offsetX(),dz=z-n.z()-spec.offsetZ();var state=BotanicalStructures.sample(dx,y,dz,spec);if(state==null)continue;
+   int worldY=n.y()+2+y;c.put(x,worldY,z,state,38);
+   if(state.isOf(Blocks.CHEST)||state.isOf(Blocks.BARREL))c.loot.put(new BlockPos(x,worldY,z),table);
+  }
+  String name=switch(spec.kind()){case GREENHOUSE->"Теплица";case SEED_BANK->"Банк семян";case LABORATORY->"Биолаборатория";case OVERGROWN_NURSERY->"Заросший питомник";};
+  BlockPos sign=new BlockPos(n.x()+spec.offsetX()+4,n.y()+7,n.z()+spec.offsetZ()+spec.halfLength());c.signs.put(sign,name);
+  c.put(sign.getX(),sign.getY(),sign.getZ(),Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.SOUTH),50);
+  var dome=DomeDesign.spec(s.salt());var route=TransitGeometry.rounded(java.util.List.of(
+    new TransitGeometry.Point(n.x()+dome.innerRadius()-5,n.y()+2,n.z()-62),
+    new TransitGeometry.Point(n.x()+50,n.y()+2,n.z()-62),
+    new TransitGeometry.Point(n.x()+50,n.y()+2,n.z()-36),
+    new TransitGeometry.Point(n.x()+spec.offsetX(),n.y()+2,n.z()-36),
+    new TransitGeometry.Point(n.x()+spec.offsetX(),n.y()+2,n.z()+spec.offsetZ()+spec.halfLength())),6);
+  path(c,new NetworkPlan.Path(route,NetworkPlan.Condition.INTACT,s.salt()^4291,true));
+  // This connector must pierce the finished dome/annex shells, not stop at their glass or bedrock.
+  // Reward chests have higher priority and stay intact.
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:route.samplesNear(x,z,3)){
+   if(sample.distance()>2)continue;
+   c.put(x,n.y()+2,z,Blocks.SMOOTH_QUARTZ.getDefaultState(),39);
+   for(int h=3;h<=6;h++)c.put(x,n.y()+h,z,AIR,39);
+  }
+ }
+ private static void sideBranch(Canvas c,NetworkPlan.Station s){
+  var n=s.node();var spec=SideBranchDesign.select(s.salt(),NetworkPlan.halfLength(s.kind()));String table=switch(spec.kind()){case SECRET_STOP,QUARANTINE->"relic_vault";case ABANDONED_DEPOT->"freight";case UTILITY->"maintenance";};
+  for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++){
+   int dx=s.northSouth()?z-n.z():x-n.x(),dz=s.northSouth()?n.x()-x:z-n.z();
+   if(dx<SideBranchDesign.minX(spec)||dx>SideBranchDesign.maxX(spec)||dz<SideBranchDesign.minZ(spec)||dz>SideBranchDesign.maxZ(spec))continue;
+   for(int y=-3;y<=17;y++){
+    var state=SideBranchBuilder.sample(dx,y,dz,spec);if(state==null)continue;if(SideBranchDesign.entrance(dx,y,dz,spec))state=AIR;
+    c.put(x,n.y()+y,z,s.northSouth()?state.rotate(net.minecraft.util.BlockRotation.CLOCKWISE_90):state,38);
+    if(state.isOf(Blocks.CHEST)||state.isOf(Blocks.BARREL))c.loot.put(new BlockPos(x,n.y()+y,z),table);
+   }
+  }
+  String name=switch(spec.kind()){case SECRET_STOP->"Тайная остановка";case QUARANTINE->"Карантинный блок";case ABANDONED_DEPOT->"Заброшенное депо";case UTILITY->"Техническая галерея";};
+  BlockPos sign=local(s,-105,7,83);c.signs.put(sign,name);
+  localPut(c,s,-105,7,83,Blocks.OAK_WALL_SIGN.getDefaultState().with(WallSignBlock.FACING,Direction.NORTH),50);
  }
  private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();RailPlan railPlan=p.service()?null:(p.singleTrack()?RailPlan.ofSingle(p.route()):RailPlan.of(p.route()));
   BlockState[] accents={Blocks.CYAN_CONCRETE.getDefaultState(),Blocks.LIME_CONCRETE.getDefaultState(),Blocks.ORANGE_CONCRETE.getDefaultState(),Blocks.LIGHT_BLUE_CONCRETE.getDefaultState(),Blocks.PURPLE_CONCRETE.getDefaultState()};
   BlockState[] glasses={Blocks.CYAN_STAINED_GLASS.getDefaultState(),Blocks.LIME_STAINED_GLASS.getDefaultState(),Blocks.ORANGE_STAINED_GLASS.getDefaultState(),Blocks.LIGHT_BLUE_STAINED_GLASS.getDefaultState(),Blocks.PURPLE_STAINED_GLASS.getDefaultState()};
-  int line=Math.floorMod((int)(p.salt()>>>5),accents.length);BlockState accent=accents[line],glass=glasses[line];
+  int line=Math.floorMod((int)(p.salt()>>>5),accents.length);BlockState accent=p.freight()?Blocks.YELLOW_CONCRETE.getDefaultState():accents[line],glass=glasses[line];
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:p.route().samplesNear(x,z,12)){
-   var profile=TunnelProfile.section(p.salt(),p.service(),p.transfer(),sample.along(),length);
+   var profile=p.freight()?new TunnelProfile.Section(TunnelProfile.Style.INDUSTRIAL,6,9,false):TunnelProfile.section(p.salt(),p.service(),p.transfer(),sample.along(),length);
    double width=p.singleTrack()?3:profile.halfWidth();int fullHeight=profile.height();
    int base=railPlan==null?(int)Math.floor(sample.floorY()):railPlan.floorAt(x,z,sample);double d=profile.distance(sample);int roof=p.singleTrack()?Math.max(5,profile.roof(d)):profile.roof(d);
    boolean damaged=p.condition()!=NetworkPlan.Condition.INTACT;
@@ -187,6 +256,10 @@ public final class NetworkBuilder {
   }
   int x=r.x1()+4,z=r.z2()-4,y=r.base()+1;
   c.put(x,y,z,Blocks.CHEST.getDefaultState(),40);
+  c.put(x,y+1,z,AIR,40);
+  boolean relic=Math.floorMod(r.salt(),12)==0;
+  c.loot.put(new BlockPos(x,y,z),relic?"relic_vault":"maintenance");
+  if(relic){c.put(x,y+2,z,Blocks.CHISELED_DEEPSLATE.getDefaultState(),40);c.put(x,y+3,z,Blocks.SOUL_LANTERN.getDefaultState(),40);}
   for(int i=0;i<3;i++){
    c.put(r.x2()-4,r.base()+1,r.z2()-5-i*4,Blocks.BARREL.getDefaultState(),34);
    c.put(r.x2()-4,r.base()+3,r.z2()-5-i*4,Blocks.SMOOTH_STONE_SLAB.getDefaultState(),34);
