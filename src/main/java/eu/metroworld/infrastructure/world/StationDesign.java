@@ -24,6 +24,10 @@ public final class StationDesign {
     }
 
     public static BlockState sample(int x, int y, int z, int length, int width, int height, long salt) {
+        return sample(x,y,z,length,width,height,salt,0);
+    }
+    public static BlockState sample(int x,int y,int z,int length,int width,int height,long salt,int expansion){
+        int gap=3+expansion;boolean island=expansion>0;
         int ax = Math.abs(x), az = Math.abs(z);
         if (ax > length || az > width || y < 0 || y > height) return null;
         BlockState accent = ((salt & 1) == 0 ? Blocks.CYAN_CONCRETE : (salt&4)==0?Blocks.BLUE_CONCRETE:Blocks.LIME_CONCRETE).getDefaultState();
@@ -35,7 +39,7 @@ public final class StationDesign {
             return (y == roof && Math.floorMod(x, 12) == 0 ? Blocks.SMOOTH_QUARTZ : Blocks.WHITE_CONCRETE).getDefaultState();
         }
         // Track beds, textured platform paving and yellow tactile safety strips.
-        if (y == 0) return (az <= 3 ? (Math.floorMod(x, 3) == 0 ? Blocks.POLISHED_DEEPSLATE : Blocks.GRAVEL) : Blocks.SMOOTH_STONE).getDefaultState();
+        if (y == 0) return (Math.abs(az-gap)<=1 ? (Math.floorMod(x, 3) == 0 ? Blocks.POLISHED_DEEPSLATE : Blocks.GRAVEL) : Blocks.SMOOTH_STONE).getDefaultState();
         int bay = Math.floorMod(x + 6, 12);
         // A readable wooden bench: lower slab seats with upright trapdoor backs.
         if (length >= 34 && ax < length - 12 && bay >= 3 && bay <= 6) {
@@ -44,18 +48,18 @@ public final class StationDesign {
                     .with(TrapdoorBlock.OPEN, true).with(TrapdoorBlock.HALF, BlockHalf.BOTTOM)
                     .with(TrapdoorBlock.FACING, z > 0 ? Direction.NORTH : Direction.SOUTH);
         }
-        if (az >= 5 && y <= 2) {
-            if (y == 2 && az == 5) return InfrastructureBlocks.TACTILE_TILE.getDefaultState();
+        if ((island?az<=gap-2||az>=gap+2:az>=5) && y <= 2) {
+            if (y == 2 && az == (island?gap-2:5)) return InfrastructureBlocks.TACTILE_TILE.getDefaultState();
             if (y == 2 && (Math.floorMod(x, 6) == 0 || az == width - 2)) return Blocks.POLISHED_ANDESITE.getDefaultState();
             return Blocks.SMOOTH_QUARTZ.getDefaultState();
         }
         // Two-step access near each platform end, leaving the main platform edge intact.
-        if (ax >= length - 10 && ax <= length - 8 && az >= 3 && az <= 4) {
-            int stepY=az-2;
+        if (ax >= length - 10 && ax <= length - 8 && az >= (island?gap-1:4) && az <= (island?gap-1:5)) {
+            int stepY=island?gap-az+1:az-3;
             if(y<stepY&&y>0)return Blocks.SMOOTH_QUARTZ.getDefaultState();
-            if(y==stepY)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,z>0?Direction.SOUTH:Direction.NORTH);
+            if(y==stepY)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,island?(z>0?Direction.NORTH:Direction.SOUTH):(z>0?Direction.SOUTH:Direction.NORTH));
         }
-        if (y == 1 && az == 2) return Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE, RailShape.EAST_WEST);
+        if (y == 1 && az == gap) return Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE, RailShape.EAST_WEST);
         // Glass service walls, solid lower skirting and a continuous coloured wayfinding ribbon.
         if (az == width) {
             if (y == 4 || y == 10) return accent;
@@ -63,10 +67,17 @@ public final class StationDesign {
             return Blocks.SMOOTH_QUARTZ.getDefaultState();
         }
         // End portals remain open for track and pedestrian connection merging.
-        if (ax == length && !(az <= 5 && y <= 8)) {
+        if (ax == length && !(az <= gap+2 && y <= 8)) {
             if (y == 8) return accent;
             if (az >= 7 && az <= width - 3 && y >= 5 && y <= 7) return glass;
             return Blocks.SMOOTH_QUARTZ.getDefaultState();
+        }
+        // Public bridge and stair flights connect the island to both exit-side aisles.
+        int bridgeX=-length+10,bridgeFloor=Math.min(6,height-5),flight=bridgeFloor-2;
+        if(island){
+            if(x==bridgeX&&az<=width-2&&y==bridgeFloor)return Blocks.SMOOTH_QUARTZ.getDefaultState();
+            if(Math.abs(z)<=1&&x>=bridgeX-flight&&x<bridgeX){int top=3+x-(bridgeX-flight);if(y<top&&y>=2)return Blocks.SMOOTH_QUARTZ.getDefaultState();if(y==top)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Direction.EAST);}
+            if(az>=width-3&&az<=width-2&&x>bridgeX&&x<=bridgeX+flight){int top=bridgeFloor-(x-bridgeX);if(y<top&&y>=2)return Blocks.SMOOTH_QUARTZ.getDefaultState();if(y==top)return Blocks.SMOOTH_QUARTZ_STAIRS.getDefaultState().with(StairsBlock.FACING,Direction.WEST);}
         }
         // Repeated slim structural ribs, with lit capitals and open pedestrian aisles.
         boolean rib = Math.floorMod(x, 12) == 0 && ax < length - 4;

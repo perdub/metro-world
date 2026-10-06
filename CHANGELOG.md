@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0
+
+- Add central-track stations with side platforms and island stations with tracks along both sides of a wide central platform. Connect island platforms to exit aisles with public stairs and a bridge.
+- Match individual lane endpoints to each station layout; station rails own their supports and headroom.
+- Add deterministic split/merge sections with two independent single-track tunnels on different elevations. Keep spiral ramps for large rises.
+- Expand locate commands to station, passenger, mini, interchange, terminal, freight, biocenter and planned entrance anchors.
+- Validate station layouts, splits and spirals in container CI, and test all locate commands.
+- Generate a fresh metro dimension for this update; old chunks use different rail positions.
+
+## 0.6.2
+
+- Restore spiral ramps for station edges with at least 48 blocks of rise, in separate side bays clear of public stairs and service rooms.
+- Keep graph endpoints unchanged; stacked turns have at least 24 blocks between levels, and transverse bays sit on the opposite side of the anchor.
+- Add OP command `/metro-world locate biocenter`, usable from Overworld or metro; return planned station/dome coordinates and a teleport command without generating chunks.
+- Check spiral rails, chunk ownership and nearest-biocenter searches in standalone tests; runtime track validation also samples a nearby spiral.
+
 ## 0.6.1
 
 - Fix false unsupported-rail failures for redstone blocks beneath powered rails using vanilla placement rules, including uphill support.

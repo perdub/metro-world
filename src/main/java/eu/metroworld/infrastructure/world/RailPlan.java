@@ -5,12 +5,14 @@ import java.util.*;
 public final class RailPlan {
  public record Cell(int x,int floor,int z,double along,String shape){}
  private record Raw(int x,int z,double y,double along){}
- private static final Map<List<TransitGeometry.Point>,RailPlan> CACHE=new LinkedHashMap<>(64,.75f,true){
-  @Override protected boolean removeEldestEntry(Map.Entry<List<TransitGeometry.Point>,RailPlan> e){return size()>64;}
+ private record Key(List<TransitGeometry.Point> points,boolean single){}
+ private static final Map<Key,RailPlan> CACHE=new LinkedHashMap<>(64,.75f,true){
+  @Override protected boolean removeEldestEntry(Map.Entry<Key,RailPlan> e){return size()>96;}
  };
  private final List<List<Cell>> lanes;
- private RailPlan(TransitGeometry.Route route){lanes=List.of(lane(route,-2),lane(route,2));}
- public static RailPlan of(TransitGeometry.Route route){synchronized(CACHE){return CACHE.computeIfAbsent(route.points(),k->new RailPlan(route));}}
+ private RailPlan(TransitGeometry.Route route,boolean single){lanes=single?List.of(lane(route,0)):List.of(lane(route,-3),lane(route,3));}
+ public static RailPlan of(TransitGeometry.Route route){synchronized(CACHE){return CACHE.computeIfAbsent(new Key(route.points(),false),k->new RailPlan(route,false));}}
+ public static RailPlan ofSingle(TransitGeometry.Route route){synchronized(CACHE){return CACHE.computeIfAbsent(new Key(route.points(),true),k->new RailPlan(route,true));}}
  public List<List<Cell>> lanes(){return lanes;}
  public int floorAt(double x,double z,TransitGeometry.Sample sample){
   double best=Double.POSITIVE_INFINITY;int floor=(int)Math.floor(sample.floorY());

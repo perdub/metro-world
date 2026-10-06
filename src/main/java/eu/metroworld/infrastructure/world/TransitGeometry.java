@@ -120,6 +120,32 @@ public final class TransitGeometry {
         }
         return new Route(out);
     }
+    /** Dedicated side bay for large rises; both ends remain part of a station-to-station edge. */
+    public static Route spiralConnection(Point a,Point b,boolean northSouth,int aLength,int bLength){
+        double start=(northSouth?a.z:a.x)+aLength,end=(northSouth?b.z:b.x)-bLength;
+        double v0=northSouth?a.x:a.z,v1=northSouth?b.x:b.z;
+        if(Math.abs(b.y-a.y)<48||end-start<320)return connection(a,b,northSouth,aLength,bLength);
+        double bay=v0+(northSouth?-156:96),u=start+192;
+        var approach=rounded(List.of(new Point(start,a.y,v0),new Point(start+80,a.y,v0),new Point(start+80,a.y,bay),new Point(u,a.y,bay)),16);
+        var points=new ArrayList<Point>(approach.points());
+        var coil=helix(new Point(u,a.y,bay),b.y,30).points();points.addAll(coil.subList(1,coil.size()));
+        var tail=connection(new Point(u,b.y,bay),new Point(end,b.y,v1),false,0,0).points();points.addAll(tail.subList(1,tail.size()));
+        if(northSouth){var rotated=new ArrayList<Point>();for(var p:points)rotated.add(new Point(p.z,p.y,p.x));return new Route(rotated);}
+        return new Route(points);
+    }
+    /** Two independent one-rail tubes diverge from and reunite with the matching mainline lanes. */
+    public static List<Route> splitMerge(Route mainline,int startGap,int endGap,boolean separate){
+        double length=mainline.length();var lanes=new ArrayList<List<Point>>();lanes.add(new ArrayList<>());lanes.add(new ArrayList<>());
+        double along=0;
+        for(int i=0;i<mainline.points.size();i++){
+            Point p=mainline.points.get(i);if(i>0){Point q=mainline.points.get(i-1);along+=Math.hypot(p.x-q.x,p.z-q.z);}
+            double t=length==0?0:along/length,spread=startGap+(endGap-startGap)*(t*t*(3-2*t))+(separate?9*Math.pow(Math.sin(Math.PI*t),2):0),rise=separate?5*Math.pow(Math.sin(Math.PI*t),2):0;
+            Point heading=mainline.headingAt(along);double nx=-heading.z,nz=heading.x;
+            lanes.get(0).add(new Point(p.x+nx*spread,p.y+rise,p.z+nz*spread));
+            lanes.get(1).add(new Point(p.x-nx*spread,p.y-rise,p.z-nz*spread));
+        }
+        return List.of(new Route(lanes.get(0)),new Route(lanes.get(1)));
+    }
     /** Full circular ramp, entering and leaving eastbound. Turns separated by >=24 blocks. */
     public static Route helix(Point entry,double targetY,double radius){
         double rise=targetY-entry.y;

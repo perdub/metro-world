@@ -41,6 +41,14 @@ sleep 10
 output=$(docker exec "$name" rcon-cli 'metro-world validate-tracks')
 printf '%s\n' "$output" | tee build/container-check/tracks.txt
 printf '%s\n' "$output" | grep -F 'TRACKS_OK:' >/dev/null
+for type in station passenger mini interchange terminal freight biocenter; do
+  output=$(docker exec "$name" rcon-cli "metro-world locate $type")
+  printf '%s\n' "$output" >> build/container-check/locate.txt
+  printf '%s\n' "$output" | grep -F '/execute in metro-world:metro-world run tp @s' >/dev/null
+done
+output=$(docker exec "$name" rcon-cli 'metro-world locate entrance')
+printf '%s\n' "$output" >> build/container-check/locate.txt
+printf '%s\n' "$output" | grep -F 'Overworld:' >/dev/null
 docker exec "$name" rcon-cli list > build/container-check/rcon.txt
 # Query Minecraft status through the published host port.
 port=$(docker port "$name" 25565/tcp | sed 's/.*://')

@@ -37,6 +37,12 @@ public final class NetworkBuilder {
   for(var path:plan.paths())path(c,path);
   for(var tower:plan.stairs())stairs(c,tower);
   for(var station:plan.stations())station(c,station,seed);
+  // Rail corridors own their supports and headroom, including every station layout.
+  for(var s:plan.stations())for(int x=-NetworkPlan.halfLength(s.kind());x<=NetworkPlan.halfLength(s.kind());x++)for(int z:new int[]{-(3+s.trackOffset()),3+s.trackOffset()}){
+   localPut(c,s,x,0,z,Blocks.POLISHED_DEEPSLATE.getDefaultState(),60);
+   for(int h=1;h<=3;h++)localPut(c,s,x,h,z,AIR,61);
+   localPut(c,s,x,1,z,Blocks.RAIL.getDefaultState().with(RailBlock.SHAPE,RailShape.EAST_WEST),62);
+  }
   rails(c,plan.paths());
   c.flush(seed);
  }
@@ -46,7 +52,7 @@ public final class NetworkBuilder {
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(int h=-6;h<=height+6;h++){
    int dx=s.northSouth()?z-n.z():x-n.x(),dz=s.northSouth()?n.x()-x:z-n.z();double edge=Math.min(Math.min(length-Math.abs(dx),width-Math.abs(dz)),Math.min(h,height-h));
    if(edge<0){shell(c,x,n.y()+h,z,edge);continue;}
-   BlockState state=StationDesign.sample(dx,h,dz,length,width,height,s.salt());
+   BlockState state=StationDesign.sample(dx,h,dz,length,width,height,s.salt(),s.trackOffset());
    if(kind==NetworkPlan.StationKind.FREIGHT)state=SpecialStations.freight(dx,h,dz,state);
    if(kind==NetworkPlan.StationKind.BIOCENTER&&Math.abs(dx)<=3&&dz<=-14&&h>=3&&h<=7)state=AIR;
    if(dx>=-12&&dx<=-6&&dz>=width-3&&h>=3&&h<=6)state=AIR;
@@ -92,14 +98,14 @@ public final class NetworkBuilder {
    }
   }
  }
- private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();RailPlan railPlan=p.service()?null:RailPlan.of(p.route());
+ private static void path(Canvas c,NetworkPlan.Path p){double length=p.route().length();RailPlan railPlan=p.service()?null:(p.singleTrack()?RailPlan.ofSingle(p.route()):RailPlan.of(p.route()));
   BlockState[] accents={Blocks.CYAN_CONCRETE.getDefaultState(),Blocks.LIME_CONCRETE.getDefaultState(),Blocks.ORANGE_CONCRETE.getDefaultState(),Blocks.LIGHT_BLUE_CONCRETE.getDefaultState(),Blocks.PURPLE_CONCRETE.getDefaultState()};
   BlockState[] glasses={Blocks.CYAN_STAINED_GLASS.getDefaultState(),Blocks.LIME_STAINED_GLASS.getDefaultState(),Blocks.ORANGE_STAINED_GLASS.getDefaultState(),Blocks.LIGHT_BLUE_STAINED_GLASS.getDefaultState(),Blocks.PURPLE_STAINED_GLASS.getDefaultState()};
   int line=Math.floorMod((int)(p.salt()>>>5),accents.length);BlockState accent=accents[line],glass=glasses[line];
   for(int x=c.sx;x<c.sx+16;x++)for(int z=c.sz;z<c.sz+16;z++)for(var sample:p.route().samplesNear(x,z,12)){
    var profile=TunnelProfile.section(p.salt(),p.service(),p.transfer(),sample.along(),length);
-   double width=profile.halfWidth();int fullHeight=profile.height();
-   int base=railPlan==null?(int)Math.floor(sample.floorY()):railPlan.floorAt(x,z,sample);double d=profile.distance(sample);int roof=profile.roof(d);
+   double width=p.singleTrack()?3:profile.halfWidth();int fullHeight=profile.height();
+   int base=railPlan==null?(int)Math.floor(sample.floorY()):railPlan.floorAt(x,z,sample);double d=profile.distance(sample);int roof=p.singleTrack()?Math.max(5,profile.roof(d)):profile.roof(d);
    boolean damaged=p.condition()!=NetworkPlan.Condition.INTACT;
    int bay=Math.floorMod((int)sample.along(),12);
    BlockState wall=switch(profile.style()){
@@ -136,7 +142,7 @@ public final class NetworkBuilder {
  }
  private static void rails(Canvas c,java.util.List<NetworkPlan.Path> paths){
   var cells=new java.util.LinkedHashMap<BlockPos,RailPlan.Cell>();var power=new java.util.HashSet<BlockPos>();
-  for(var p:paths)if(!p.service())for(var lane:RailPlan.of(p.route()).lanes())for(var cell:lane){
+  for(var p:paths)if(!p.service())for(var lane:(p.singleTrack()?RailPlan.ofSingle(p.route()):RailPlan.of(p.route())).lanes())for(var cell:lane){
    if(cell.x()<c.sx-4||cell.x()>c.sx+19||cell.z()<c.sz-4||cell.z()>c.sz+19)continue;
    BlockPos at=new BlockPos(cell.x(),cell.floor()+1,cell.z());cells.putIfAbsent(at,cell);
    boolean curve=!cell.shape().startsWith("ascending_")&&!cell.shape().equals("east_west")&&!cell.shape().equals("north_south");

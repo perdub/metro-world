@@ -19,7 +19,18 @@ public final class TrackValidation {
   var world=source.getServer().getWorld(Transit.UNDERGROUND);
   if(world==null){source.sendError(Text.literal("TRACKS_FAILED: metro dimension unavailable"));return 0;}
   int checked=0,errors=0,powered=0;String first="";var visited=new HashSet<BlockPos>();
-  for(boolean ns:new boolean[]{false,true})for(var lane:RailPlan.of(NetworkPlan.connection(world.getSeed(),0,0,ns)).lanes())for(var cell:lane){
+  record Edge(int x,int z,boolean ns){}
+  var edges=new ArrayList<Edge>();edges.add(new Edge(0,0,false));edges.add(new Edge(0,0,true));
+  boolean foundSpiral=false,foundSplit=false,foundIsland=false;
+  for(int x=-3;x<=3;x++)for(int z=-3;z<=3;z++)for(boolean ns:new boolean[]{false,true}){
+   if(ns?Math.floorMod(x,3)!=0:Math.floorMod(z,3)!=0)continue;
+   var a=StationGraph.railNode(world.getSeed(),x,z,ns);var b=StationGraph.railNode(world.getSeed(),x+(ns?0:1),z+(ns?1:0),ns);
+   boolean spiral=Math.abs(a.y()-b.y())>=48,split=Math.abs(a.y()-b.y())<48&&Math.floorMod(NetworkPlan.hash(world.getSeed(),x,z,309),5)==0;
+   boolean island=NetworkPlan.trackOffset(world.getSeed(),x,z,ns)>0||NetworkPlan.trackOffset(world.getSeed(),x+(ns?0:1),z+(ns?1:0),ns)>0;
+   if(spiral&&!foundSpiral||split&&!foundSplit||island&&!foundIsland){edges.add(new Edge(x,z,ns));foundSpiral|=spiral;foundSplit|=split;foundIsland|=island;}
+  }
+  var routes=new ArrayList<NetworkPlan.TrackRoute>();for(var edge:edges)routes.addAll(NetworkPlan.trackRoutes(world.getSeed(),edge.x(),edge.z(),edge.ns()));
+  for(var route:routes)for(var lane:(route.singleTrack()?RailPlan.ofSingle(route.route()):RailPlan.of(route.route())).lanes())for(var cell:lane){
    var at=new BlockPos(cell.x(),cell.floor()+1,cell.z());if(!visited.add(at))continue;
    world.getChunk(Math.floorDiv(at.getX(),16),Math.floorDiv(at.getZ(),16));
    var state=world.getBlockState(at);String problem=null;
@@ -39,12 +50,12 @@ public final class TrackValidation {
    checked++;if(state.isOf(Blocks.POWERED_RAIL))powered++;if(problem!=null){errors++;if(first.isEmpty())first=at.toShortString()+": "+problem;}
   }
   // Check the two halls at each end, their rail throats and physical exit terminals.
-  for(boolean ns:new boolean[]{false,true})for(int end=0;end<=1;end++){
-   var node=StationGraph.railNode(world.getSeed(),ns?0:end,ns?end:0,ns);
+  for(var edge:edges)for(int end=0;end<=1;end++){
+   boolean ns=edge.ns();var node=StationGraph.railNode(world.getSeed(),edge.x()+(ns?0:end),edge.z()+(ns?end:0),ns);
    var plan=NetworkPlan.forChunk(world.getSeed(),Math.floorDiv(node.x(),16)*16,Math.floorDiv(node.z(),16)*16);
    var station=plan.stations().stream().filter(s->s.node().equals(node)&&s.northSouth()==ns).findFirst().orElseThrow();
    int length=NetworkPlan.halfLength(station.kind()),width=NetworkPlan.halfWidth(station.kind());
-   for(int offset=-length;offset<=length;offset++)for(int lane:new int[]{-2,2}){
+   for(int offset=-length;offset<=length;offset++)for(int lane:new int[]{-(3+station.trackOffset()),3+station.trackOffset()}){
     var at=new BlockPos(node.x()+(ns?-lane:offset),node.y()+1,node.z()+(ns?offset:lane));
     world.getChunk(Math.floorDiv(at.getX(),16),Math.floorDiv(at.getZ(),16));
     if(!(world.getBlockState(at).getBlock() instanceof AbstractRailBlock)||!world.getBlockState(at.up()).isAir()||!supported(world,at,world.getBlockState(at))){
