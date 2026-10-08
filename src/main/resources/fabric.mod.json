@@ -8,6 +8,9 @@
   "entrypoints": {
     "main": [
       "eu.metroworld.infrastructure.InfrastructureMod"
+    ],
+    "preLaunch": [
+      "eu.metroworld.infrastructure.train.TrainPackBootstrap"
     ]
   },
   "mixins": [
@@ -18,7 +21,9 @@
     "minecraft": "~1.21.1",
     "java": ">=21",
     "fabric-api": "*",
-    "polymer-core": "*"
+    "polymer-core": "*",
+    "polymer-resource-pack": "*",
+    "polymer-autohost": "*"
   },
   "license": "MIT"
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- Add compact blue/red passenger trains, freight locomotives, container wagons and empty platforms; station spawning, seats and experimental moving interiors.
+- Add persistent control state, instrument panel, pressure, traction, brakes, reverser, doors and lighting. Closing the panel does not stop the train.
+- Add coupling, last-car uncoupling, cargo inventories, clearance and train collision checks, diagonal and graded path movement.
+- Add a diagnostic TrainCarts YAML/resource-pack importer and Polymer-hosted original train/panel assets. Unsupported attachment types are reported explicitly.
+- Add manually built animated escalators and container train/resource-pack smoke checks.
+- Full Gradle/container/client verification remains required in CI; see CHECKS.md.
+
 ## 0.9.0
 
 - Make reserved noise volumes genuinely three-dimensional; station elevations and bounded 3D bypasses can pass above or below obstacles without cutting their protected volumes.

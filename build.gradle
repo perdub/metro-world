@@ -11,6 +11,10 @@ dependencies {
  modImplementation 'eu.pb4:polymer-core:0.9.19+1.21.1'
  include 'eu.pb4:polymer-core:0.9.19+1.21.1'
  include 'eu.pb4:polymer-common:0.9.19+1.21.1'
+ modImplementation 'eu.pb4:polymer-resource-pack:0.9.19+1.21.1'
+ include 'eu.pb4:polymer-resource-pack:0.9.19+1.21.1'
+ modImplementation 'eu.pb4:polymer-autohost:0.9.19+1.21.1'
+ include 'eu.pb4:polymer-autohost:0.9.19+1.21.1'
  testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

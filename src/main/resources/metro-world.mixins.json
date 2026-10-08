@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "FlatGeneratorMixin",
-    "EntranceGeneratorMixin"
+    "EntranceGeneratorMixin",
+    "TrainFloorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

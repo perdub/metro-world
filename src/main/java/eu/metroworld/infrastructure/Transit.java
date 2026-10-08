@@ -74,8 +74,8 @@ public final class Transit {
   p.teleport(w,surface.getX()+0.5,surface.getY(),surface.getZ()+0.5,p.getYaw(),0);return 1;
  }
  private static BlockPos findSurface(ServerWorld world,int x,int z){
-  x=(int)Math.clamp((long)x,(long)Math.ceil(world.getWorldBorder().getBoundWest())+2,(long)Math.floor(world.getWorldBorder().getBoundEast())-2);
-  z=(int)Math.clamp((long)z,(long)Math.ceil(world.getWorldBorder().getBoundNorth())+2,(long)Math.floor(world.getWorldBorder().getBoundSouth())-2);
+  x=(int)Math.min(Math.max((long)x,(long)Math.ceil(world.getWorldBorder().getBoundWest())+2),(long)Math.floor(world.getWorldBorder().getBoundEast())-2);
+  z=(int)Math.min(Math.max((long)z,(long)Math.ceil(world.getWorldBorder().getBoundNorth())+2),(long)Math.floor(world.getWorldBorder().getBoundSouth())-2);
   for(int radius=0;radius<=48;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){
    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
    BlockPos pos=world.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,new BlockPos(x+dx,0,z+dz));

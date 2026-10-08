@@ -9,7 +9,13 @@ import net.minecraft.util.math.BlockPos;
 public final class InfrastructureMod implements ModInitializer {
  public void onInitialize(){
   InfrastructureBlocks.initialize();
+  eu.metroworld.infrastructure.train.Trains.initialize();
+  Escalators.initialize();
+  net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server->{eu.metroworld.infrastructure.train.Trains.load(server);Escalators.load(server);eu.metroworld.infrastructure.train.TrainModels.buildPack();});
+  net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server->{eu.metroworld.infrastructure.train.Trains.save(server);Escalators.save(server);});
   net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server->{
+   eu.metroworld.infrastructure.train.Trains.tick(server);
+   Escalators.tick(server);
    if(server.getTicks()%20!=0)return;
    MetroMusic.tick(server);
    for(var player:server.getPlayerManager().getPlayerList()){
@@ -21,8 +27,10 @@ public final class InfrastructureMod implements ModInitializer {
     if(server.getTicks()%1200==0)player.playSoundToPlayer(net.minecraft.sound.SoundEvents.AMBIENT_CAVE.value(),net.minecraft.sound.SoundCategory.AMBIENT,0.35f,0.85f);
    }
   });
-  net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server->MetroMusic.reset());
+  net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server->{MetroMusic.reset();eu.metroworld.infrastructure.train.Trains.reset();Escalators.reset();});
   CommandRegistrationCallback.EVENT.register((dispatcher,registries,environment)->{
+   eu.metroworld.infrastructure.train.TrainCommands.register(dispatcher);
+   Escalators.registerCommands(dispatcher);
    dispatcher.register(CommandManager.literal("metro-world-music")
     .then(CommandManager.literal("on").executes(c->MetroMusic.enabled(c.getSource().getPlayerOrThrow(),true)))
     .then(CommandManager.literal("off").executes(c->MetroMusic.enabled(c.getSource().getPlayerOrThrow(),false))));

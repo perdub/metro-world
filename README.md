@@ -1,4 +1,4 @@
-# Metro World 0.9.0
+# Metro World 0.10.0
 
 Minecraft Java 1.21.1, Fabric, Java 21 and server-side Polymer. Vanilla multiplayer clients do not need the mod. Infrastructure is generated procedurally in the protected `metro-world:metro-world` dimension, at heights −256…255.
 
@@ -37,3 +37,7 @@ CI runs Java geometry checks, Gradle tests/build and a real temporary Minecraft 
 Local standalone checks cover noise clearance, deterministic placement, traffic compatibility, diagonal/curved routes, rail continuity, matching station ports and chunk ownership. Full Minecraft compilation and container execution still require CI when Java 21, Docker or dependency downloads are unavailable locally.
 
 Подробнее о новых секторах, тупиках, луте и музыке: [CONTENT-0.9.md](CONTENT-0.9.md).
+
+## Trains / Поезда 0.10.0
+
+Инструкция: [TRAIN-GUIDE.md](TRAIN-GUIDE.md). Поезда, контейнерные вагоны, приборная панель, импорт моделей TrainCarts и эскалаторы. Ресурс-пак Polymer обязателен. Существующий мир 0.9.0 можно сохранить. Ходьба внутри движущегося состава экспериментальная; проверка настоящим клиентом ещё нужна.

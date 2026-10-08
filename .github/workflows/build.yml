@@ -26,6 +26,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Install model importer test dependencies
+        run: python3 -m pip install -r scripts/train-model-requirements.txt
+      - name: Check train controller and geometry
+        run: bash scripts/check-trains.sh
       - name: Check discrete rail connectivity
         run: bash scripts/check-rail-geometry.sh
       - run: bash ./gradlew --no-daemon test build

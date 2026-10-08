@@ -44,6 +44,10 @@ printf '%s\n' "$output" | grep -F 'TRACKS_OK:' >/dev/null
 output=$(docker exec "$name" rcon-cli 'metro-world validate-features')
 printf '%s\n' "$output" | tee build/container-check/features.txt
 printf '%s\n' "$output" | grep -F 'FEATURES_OK:' >/dev/null
+output=$(docker exec "$name" rcon-cli 'metro-train validate')
+printf '%s\n' "$output" | tee build/container-check/trains.txt
+printf '%s\n' "$output" | grep -F 'TRAINS_OK:' >/dev/null
+docker exec "$name" test -s /data/polymer-resourcepack.zip
 for type in station passenger mini interchange terminal freight mixed biocenter aquarium spiral; do
   output=$(docker exec "$name" rcon-cli "metro-world locate $type")
   printf '%s\n' "$output" >> build/container-check/locate.txt
