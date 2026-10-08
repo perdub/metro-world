@@ -19,7 +19,9 @@ ready=false
 for ((attempt=0;attempt<120;attempt++)); do
   running=$(docker inspect -f '{{.State.Running}}' "$name")
   [[ "$running" == true ]] || { docker logs "$name"; exit 1; }
-  if docker logs "$name" 2>&1 | grep -F 'Done (' >/dev/null; then ready=true; break; fi
+  if docker logs "$name" 2>&1 | grep -F 'Done (' >/dev/null; then
+    if docker exec "$name" mc-health >/dev/null 2>&1; then ready=true; break; fi
+  fi
   sleep 5
 done
 [[ "$ready" == true ]] || { echo 'Minecraft did not become ready within 10 minutes'; exit 1; }
@@ -47,7 +49,7 @@ printf '%s\n' "$output" | grep -F 'FEATURES_OK:' >/dev/null
 output=$(docker exec "$name" rcon-cli 'metro-train validate')
 printf '%s\n' "$output" | tee build/container-check/trains.txt
 printf '%s\n' "$output" | grep -F 'TRAINS_OK:' >/dev/null
-docker exec "$name" test -s /data/polymer-resourcepack.zip
+docker exec "$name" sh -c 'test -s /data/polymer/resource_pack.zip || test -s /data/polymer-resourcepack.zip'
 for type in station passenger mini interchange terminal freight mixed biocenter aquarium spiral; do
   output=$(docker exec "$name" rcon-cli "metro-world locate $type")
   printf '%s\n' "$output" >> build/container-check/locate.txt
